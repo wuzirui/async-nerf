@@ -1,8 +1,10 @@
-from dataloaders.read_standard_dataset import read_data
+from dataloaders.read_default_dataset import DefaultDataset
+import torch.utils.data.dataloader as dataloader
 
-def load_dataset(datapath, dataset_type):
-    if dataset_type == 'kitti':
-        pose = read_data(datapath)
+def load_dataset(hparams, split='train'):
+    dataset = None
+    if hparams.dataset_type == 'default':
+        dataset = DefaultDataset(hparams, split=split)
     else:
         raise NotImplementedError()
-    return pose
+    return dataloader.DataLoader(dataset, shuffle=True, batch_size=hparams.batch_size)

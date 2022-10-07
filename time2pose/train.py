@@ -28,46 +28,61 @@ class Runner:
         self.exp_name = str(max([int(name.name) for name in self.exp_folder.iterdir()] + [0]) + 1)
         self.writer = SummaryWriter(self.exp_folder / self.exp_name / 'tb')
         logging.basicConfig(level=logging.DEBUG
-                            , format="%(asctime)s - %(name)s - %(levelname)-9s - %(filename)-8s : %(lineno)s line - %(message)s"
+                            , format="[%(levelname)s] %(asctime)-9s - %(filename)-8s:%(lineno)s line - %(message)s"
                             , datefmt="%Y-%m-%d %H:%M:%S")
         self.logger = logging.getLogger()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     def setup_misc(self):
-        torch.manual_seed(hparams.random_seed)
-        torch.cuda.manual_seed(hparams.random_seed)
-        torch.cuda.manual_seed_all(hparams.random_seed)
+        torch.manual_seed(self.hparams.random_seed)
+        torch.cuda.manual_seed(self.hparams.random_seed)
+        torch.cuda.manual_seed_all(self.hparams.random_seed)
     
     def setup_dataset(self):
-        train_pose = dataloader.load_dataset(hparams.train_datapath, hparams.dataset_type)
+        self.train_dataset = dataloader.load_dataset(self.hparams, split='train')
+        self.val_dataset = dataloader.load_dataset(self.hparams, split='val')
+        self.test_dataset = None
+
+        if self.hparams.test_datapath is not None:
+            self.test_dataset = dataloader.load_dataset(self.hparams, split='test')
     
     def setup_network(self):
-        self.network = network.TimePoseFunction(self.hparams)
+        self.network = network.TimePoseFunction(self.hparams).to(self.device)
+        self.optimizer = torch.optim.Adam(params=self.network.parameters(), lr=self.hparams.lr)
     
-    def run():
+    def run(self):
+        bar = tqdm(range(self.hparams.train_epochs))
+        for epoch in bar:
+            result = self._training_step()
+            self.writer.add_scalar('train/loss', result['loss'], global_step=epoch)
+            bar.update(1)
+            bar.set_postfix(result)
+            if epoch % self.hparams.val_interval == 0:
+                self._run_validation()
+
+    def _training_step(self):
+        cum = 0
+        for batch in self.train_dataset:
+            timestamps = batch['timestamp'].reshape(-1, 1).float().to(self.device)
+            gt_se3 = batch['SE3'].reshape(-1, 7).float().to(self.device)
+            predicted_se3 = self.network(timestamps)
+            loss = nn.functional.l1_loss(predicted_se3, gt_se3, reduce='mean')
+            self.optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            self.optimizer.step()
+            cum += loss.cpu().detach()
+        return {
+            "loss": cum,
+        }
+    
+    def _run_validation(self):
         pass
 
 
 if __name__ == '__main__':
     hparams = opts.get_opts_base().parse_args()
     runner = Runner(hparams=hparams)
-
-    # n_frames = len(pose)
-    # ts = np.linspace(0, n_frames - 1, n_frames)
-    # pose, ts = torch.tensor(pose, dtype=torch.float32).to(device), torch.tensor(ts, dtype=torch.float32).to(device)
-    # ts = ts.view(-1, 1)
-    # train_idx = [i for i in range(n_frames) if i % valset_interval != 0]
-    # val_idx = [i for i in range(n_frames) if i % valset_interval == 0]
-    # n_train = len(train_idx)
-    # n_val = len(val_idx)
-
-    # logger.info(f"frame num: {n_frames}, train set: {n_train}, val set: {n_val}")
-    # train_ts, val_ts = ts[train_idx], ts[val_idx]
-    # train_pose, val_pose = pose[train_idx], pose[val_idx]
-    # network = TimePoseFunction().to(device)
-    # optimizer = torch.optim.Adam(list(network.parameters()), lr=1e-2)
-    # train_epoch = 100000
-    # val_interval = 2000
+    runner.run()
 
     # bar = tqdm(range(train_epoch))
     # for epoch in bar:
