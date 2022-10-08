@@ -74,8 +74,8 @@ class Runner:
     def _training_step(self):
         cum_metrics = {}
         for batch in self.train_dataset:
-            timestamps = batch['timestamp'].reshape(-1, 1).float().to(self.device)
-            gt_se3 = batch['SE3'].reshape(-1, 7).float().to(self.device)
+            timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
+            gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
             #inference through network
             predicted_trans, predicted_rot = self.network(timestamps)
 

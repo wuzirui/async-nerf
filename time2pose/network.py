@@ -44,13 +44,13 @@ class TimePoseFunction(nn.Module):
             layer = nn.Sequential(
                 layer, 
                 nn.BatchNorm1d(n_channels),
-                nn.Softplus()
+                nn.LeakyReLU()
             )
             nets.append(layer)
         
         self.nets= nn.ModuleList(nets)
-        self.rotation_output = nn.Linear(n_channels, 4)
-        self.translation_output = nn.Linear(n_channels, 3)
+        self.rotation_output = nn.Sequential(nn.Linear(n_channels, 4), nn.Softplus())
+        self.translation_output = nn.Sequential(nn.Linear(n_channels, 3))
         
         
     def forward(self, t):
