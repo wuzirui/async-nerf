@@ -34,8 +34,10 @@ class DefaultDataset():
             self.src_files = [x for x in self.src_files if x in (self.train_idx if split =='train' else self.val_idx)]
             self.n_frames = len(self.src_files)
             self.frames = [float(x.stem) for x in self.src_files if x.suffix == '.txt']
-            self.poses_matrices = [np.loadtxt(x).reshape(4, 4) for x in self.datapath.iterdir() if x.suffix == '.txt']
-            self.poses_SE3 = [pp.mat2SE3(torch.tensor(x)) for x in self.poses_matrices]
+            self.poses_matrices = [torch.tensor(np.loadtxt(x)).reshape(4, 4) for x in self.datapath.iterdir() if x.suffix == '.txt']
+            self.poses_matrices = torch.cat(self.poses_matrices, dim=0).reshape(-1, 4, 4)
+            self.poses_matrices[:, :3, 3] /= hparams.pose_scale_factor
+            self.poses_SE3 = pp.mat2SE3(self.poses_matrices)
         self.logger.info(f'loading {self.n_frames} frames into datasets, split={split}')
             
 
@@ -44,6 +46,6 @@ class DefaultDataset():
     
     def __getitem__(self, i):
         return {
-            "timestamp": self.frames[i],
+            "timestamp": torch.FloatTensor([self.frames[i]]),
             "SE3": self.poses_SE3[i] if self.split != 'test' else None
         }

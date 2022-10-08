@@ -44,13 +44,13 @@ class TimePoseFunction(nn.Module):
             layer = nn.Sequential(
                 layer, 
                 nn.BatchNorm1d(n_channels),
-                nn.LeakyReLU(inplace=True, negative_slope=0.01)
+                nn.Softplus()
             )
             nets.append(layer)
         
-        output_layer = nn.Linear(n_channels, 7)     # tx, ty, tz, qx, qy, qz, qw
-        nets.append(output_layer)
         self.nets= nn.ModuleList(nets)
+        self.rotation_output = nn.Linear(n_channels, 4)
+        self.translation_output = nn.Linear(n_channels, 3)
         
         
     def forward(self, t):
@@ -60,4 +60,7 @@ class TimePoseFunction(nn.Module):
             if i in self.skip:
                 x = torch.concat([emb, x], dim=-1)
             x = net(x)
-        return x
+        rot_raw = self.rotation_output(x)
+        rot = rot_raw / torch.linalg.vector_norm(rot_raw, keepdim=True, dim=-1)
+        trans = self.translation_output(x)
+        return trans, rot
