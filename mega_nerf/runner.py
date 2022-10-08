@@ -611,32 +611,6 @@ class Runner:
                     if self.writer is not None:
                         self.writer.add_image(('val_depth/{}' if is_depth else 'val_rgb/{}').format(i), T.ToTensor()(img), train_index)
 
-                    if self.hparams.bg_nerf:
-                        if f'bg_rgb_{typ}' in results:
-                            img = Runner._create_result_image(viz_rgbs,
-                                                                results[f'bg_rgb_{typ}'].view(viz_rgbs.shape[0],
-                                                                                            viz_rgbs.shape[1],
-                                                                                            3).cpu(),
-                                                                viz_gt_depths,
-                                                                results[f'bg_depth_{typ}'], None, None)
-
-                            if self.writer is not None:
-                                self.writer.add_image('val/{}_bg'.format(i), T.ToTensor()(img), train_index)
-                            else:
-                                img.save(str(image_path / '{}_bg.jpg'.format(i)))
-
-                            img = Runner._create_result_image(viz_rgbs,
-                                                                results[f'fg_rgb_{typ}'].view(viz_rgbs.shape[0],
-                                                                                            viz_rgbs.shape[1],
-                                                                                            3).cpu(),
-                                                                viz_gt_depths,
-                                                                results[f'fg_depth_{typ}'], None, None)
-
-                            if self.writer is not None:
-                                self.writer.add_image('val/{}_fg'.format(i), T.ToTensor()(img), train_index)
-                            else:
-                                img.save(str(image_path / '{}_fg.jpg'.format(i)))
-
                     del results
 
             if 'RANK' in os.environ:
