@@ -5,6 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import logging
+
+from pytorch3d import transforms
+from torch.autograd import Variable
 from tqdm import tqdm
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
