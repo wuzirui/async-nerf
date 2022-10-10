@@ -163,27 +163,3 @@ if __name__ == '__main__':
     hparams = opts.get_opts_base().parse_args()
     runner = Runner(hparams=hparams)
     runner.run()
-
-    # bar = tqdm(range(train_epoch))
-    # for epoch in bar:
-    #     output = network(train_ts)
-    #     optimizer.zero_grad()
-    #     loss = F.mse_loss(output, train_pose, reduction='mean')
-    #     loss.backward()
-    #     optimizer.step()
-    #     writer.add_scalar('train/loss', loss, global_step=epoch)
-
-    #     bar.set_postfix_str(f'loss={loss}')
-    #     if epoch % val_interval == 0 and epoch != 0:
-    #         with torch.inference_mode(True):
-    #             output = network(val_ts)
-    #             loss = F.mse_loss(output, val_pose, reduction='mean')
-    #             writer.add_scalar('val/loss', loss, global_step=epoch)
-    #             print(f'validation loss = {loss}')
-
-    # torch.save(network, "checkpoint.pt")
-    # test_ts = ts
-    # output = network(test_ts).cpu().detach().numpy()
-
-    # output_filename = 'manmade_12_out.txt'
-    # np.savetxt(output_filename, output)
