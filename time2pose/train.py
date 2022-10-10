@@ -5,12 +5,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import logging
-
-from pytorch3d import transforms
-from torch.autograd import Variable
 from tqdm import tqdm
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
+import pypose as pp
 
 import network
 from dataloaders import dataloader
@@ -41,6 +39,7 @@ class Runner:
         torch.manual_seed(self.hparams.random_seed)
         torch.cuda.manual_seed(self.hparams.random_seed)
         torch.cuda.manual_seed_all(self.hparams.random_seed)
+        torch.set_default_dtype(torch.float64)
     
     def setup_dataset(self):
         self.train_dataset = dataloader.load_dataset(self.hparams, split='train')
@@ -55,6 +54,7 @@ class Runner:
         self.optimizer = torch.optim.Adam(params=self.network.parameters(), lr=self.hparams.lr)
     
     def run(self):
+        self.logger.info(self.hparams)
         bar = tqdm(range(self.hparams.train_epochs))
         for epoch in bar:
             result = self._training_step()
@@ -78,12 +78,30 @@ class Runner:
         cum_metrics = {}
         for batch in self.train_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
-            gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
-            #inference through network
-            predicted_trans, predicted_rot = self.network(timestamps)
 
-            trans_loss = nn.functional.l1_loss(predicted_trans, gt_se3[:, :3], reduction='mean')
-            rot_loss = nn.functional.l1_loss(predicted_rot, gt_se3[:, 3:], reduction='mean')
+            #inference through network
+            predicted_trans, predicted_rot_se3 = self.network(timestamps)
+
+            if self.hparams.pose_representation == 'se3':
+                gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
+                gt_rot = gt_se3[:, 3:]
+                gt_trans = gt_se3[:, :3]
+                predicted_rot = predicted_rot_se3
+            else:
+                gt_matrix = batch['matrix'].reshape(-1, 4, 4).to(self.device)
+                gt_rot = gt_matrix[:, :3, :3]
+                gt_trans = gt_matrix[:, :3, 3]
+                predicted_rot = pp.matrix(pp.SO3(predicted_rot_se3))
+
+            if self.hparams.rot_loss_type == 'l1':
+                rot_loss = nn.functional.l1_loss(predicted_rot, gt_rot, reduction='mean')
+            else:
+                rot_loss = nn.functional.mse_loss(predicted_rot, gt_rot, reduction='mean')
+            if self.hparams.trans_loss_type == 'l1':
+                trans_loss = nn.functional.l1_loss(predicted_trans, gt_trans, reduction='mean')
+            else:
+                trans_loss = nn.functional.mse_loss(predicted_trans, gt_trans, reduction='mean')
+
             loss = self.hparams.translation_weight * trans_loss + rot_loss
 
             self.optimizer.zero_grad(set_to_none=True)
