@@ -52,5 +52,5 @@ class DefaultDataset():
         return {
             "timestamp": torch.tensor([self.frames[i]]),
             "SE3": self.poses_SE3[i] if self.split != 'test' else torch.tensor(0),
-            "matrix": self.poses_matrices[i] if self.split != 'test' else torch.tensor(0),
+            # "matrix": self.poses_matrices[i] if self.split != 'test' else torch.tensor(0),
         }

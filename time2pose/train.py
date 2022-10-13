@@ -12,6 +12,7 @@ import pypose as pp
 
 import network
 from dataloaders import dataloader
+from optimization.adaptive_loss import AdaptiveLoss
 import opts
 
 
@@ -51,7 +52,11 @@ class Runner:
     
     def setup_network(self):
         self.network = network.TimePoseFunction(self.hparams).to(self.device)
-        self.optimizer = torch.optim.Adam(params=self.network.parameters(), lr=self.hparams.lr)
+        self.adaptive_loss_fn = AdaptiveLoss(self.hparams).to(self.device)
+        params = []
+        params.append({"params": self.network.parameters()})
+        params.append({"params": self.adaptive_loss_fn.parameters()})
+        self.optimizer = torch.optim.Adam(params=params, lr=self.hparams.lr)
     
     def run(self):
         self.logger.info(self.hparams)
@@ -80,29 +85,12 @@ class Runner:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
 
             #inference through network
-            predicted_trans, predicted_rot_se3 = self.network(timestamps)
+            predicted_trans, predicted_rot = self.network(timestamps)
 
-            if self.hparams.pose_representation == 'se3':
-                gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
-                gt_rot = gt_se3[:, 3:]
-                gt_trans = gt_se3[:, :3]
-                predicted_rot = predicted_rot_se3
-            else:
-                gt_matrix = batch['matrix'].reshape(-1, 4, 4).to(self.device)
-                gt_rot = gt_matrix[:, :3, :3]
-                gt_trans = gt_matrix[:, :3, 3]
-                predicted_rot = pp.matrix(pp.SO3(predicted_rot_se3))
+            gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
+            trans_loss, rot_loss = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
 
-            if self.hparams.rot_loss_type == 'l1':
-                rot_loss = nn.functional.l1_loss(predicted_rot, gt_rot, reduction='mean')
-            else:
-                rot_loss = nn.functional.mse_loss(predicted_rot, gt_rot, reduction='mean')
-            if self.hparams.trans_loss_type == 'l1':
-                trans_loss = nn.functional.l1_loss(predicted_trans, gt_trans, reduction='mean')
-            else:
-                trans_loss = nn.functional.mse_loss(predicted_trans, gt_trans, reduction='mean')
-
-            loss = self.hparams.translation_weight * trans_loss + rot_loss
+            loss = trans_loss + rot_loss
 
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -111,7 +99,9 @@ class Runner:
             metrics = {
                 'loss': float(loss),
                 'translation loss': float(trans_loss),
-                'rotation loss': float(rot_loss)
+                'rotation loss': float(rot_loss),
+                'sigma_x': float(self.adaptive_loss_fn.s_x),
+                'sigma_q': float(self.adaptive_loss_fn.s_q)
             }
 
             for key, value in metrics.items():

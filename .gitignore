@@ -136,3 +136,4 @@ datasets/
 exp/
 parscripts/*-*.txt
 chunk*/
+raw_data
