@@ -28,4 +28,5 @@ def get_opts_base():
     parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--train_epochs', type=int, default=100000)
     parser.add_argument('--val_interval', type=int, default=1000)
+    parser.add_argument('--ckpt_interval', type=int, default=1000, help='save checkpoints and run evaluation if test timestamps available')
     return parser

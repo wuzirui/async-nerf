@@ -60,7 +60,7 @@ class Runner:
     
     def run(self):
         self.logger.info(self.hparams)
-        bar = tqdm(range(self.hparams.train_epochs))
+        bar = tqdm(range(self.hparams.train_epochs), ncols=120)
         for epoch in bar:
             result = self._training_step()
             self.write_tensorboard(result, 'train', epoch)
@@ -74,6 +74,10 @@ class Runner:
                 self.write_tensorboard(metrics, 'val', epoch)
                 metrics.update(result)
                 self.logger.info({key_alias[key]: value for key, value in metrics.items() if key in key_alias.keys()})
+            if epoch % self.hparams.ckpt_interval == 0 and epoch != 0:
+                self._save_checkpoint(epoch)
+                if self.test_dataset is not None:
+                    self._eval(epoch)
     
     def write_tensorboard(self, metrics, split, epoch):
         for key, value in metrics.items():
@@ -112,42 +116,67 @@ class Runner:
             
         return cum_metrics    
 
+
+    @torch.no_grad()
     def _run_validation(self):
-        with torch.inference_mode():
-            pred_trans, pred_rot = [], []
-            gt_SE3 = []
-            for batch in self.val_dataset:
-                timestamp = batch['timestamp'].to(self.device)
-                gt_SE3.append(batch['SE3'])
-                predicted_trans, predicted_rot = self.network(timestamp)
-                pred_trans.append(predicted_trans)
-                pred_rot.append(predicted_rot)
-            pred_trans = torch.cat(pred_trans, dim=0).to(self.device)
-            pred_rot = torch.cat(pred_rot, dim=0).to(self.device)
-            gt_SE3 = torch.cat(gt_SE3, dim=0).to(self.device)
-            error_trans_axes = (pred_trans - gt_SE3[:, :3]).abs().cpu().numpy() * self.hparams.pose_scale_factor
-            error_trans = np.linalg.norm(error_trans_axes, axis=-1)
-            theta_rot = (torch.acos(torch.sum(pred_rot * gt_SE3[:, 3:], dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
-            error_trans_axes_median = np.median(error_trans_axes, axis=1)
-            error_trans_axes_mean = np.mean(error_trans_axes, axis=1)
-            error_trans_median = np.median(error_trans, axis=0)
-            error_trans_mean = np.mean(error_trans, axis=0)
-            theta_rot_median = np.median(theta_rot, axis=0)
-            theta_rot_mean = np.mean(theta_rot, axis=0)
-            metrics = {
-                'error_x_median': error_trans_axes_median[0],
-                'error_y_median': error_trans_axes_median[1],
-                'error_z_median': error_trans_axes_median[2],
-                'error_x_mean': error_trans_axes_mean[0],
-                'error_y_mean': error_trans_axes_mean[1],
-                'error_z_mean': error_trans_axes_mean[2],
-                'error_translation_median': error_trans_median,
-                'error_translation_mean': error_trans_mean,
-                'theta_median': theta_rot_median,
-                'theta_mean': theta_rot_mean,
-            }
-            return metrics
+        pred_trans, pred_rot = [], []
+        gt_SE3 = []
+        for batch in self.val_dataset:
+            timestamp = batch['timestamp'].to(self.device)
+            gt_SE3.append(batch['SE3'])
+            predicted_trans, predicted_rot = self.network(timestamp)
+            pred_trans.append(predicted_trans)
+            pred_rot.append(predicted_rot)
+        pred_trans = torch.cat(pred_trans, dim=0).to(self.device)
+        pred_rot = torch.cat(pred_rot, dim=0).to(self.device)
+        gt_SE3 = torch.cat(gt_SE3, dim=0).to(self.device)
+        error_trans_axes = (pred_trans - gt_SE3[:, :3]).abs().cpu().numpy() * self.hparams.pose_scale_factor
+        error_trans = np.linalg.norm(error_trans_axes, axis=-1)
+        theta_rot = (torch.acos(torch.sum(pred_rot * gt_SE3[:, 3:], dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+        error_trans_axes_median = np.median(error_trans_axes, axis=1)
+        error_trans_axes_mean = np.mean(error_trans_axes, axis=1)
+        error_trans_median = np.median(error_trans, axis=0)
+        error_trans_mean = np.mean(error_trans, axis=0)
+        theta_rot_median = np.median(theta_rot, axis=0)
+        theta_rot_mean = np.mean(theta_rot, axis=0)
+        metrics = {
+            'error_x_median': error_trans_axes_median[0],
+            'error_y_median': error_trans_axes_median[1],
+            'error_z_median': error_trans_axes_median[2],
+            'error_x_mean': error_trans_axes_mean[0],
+            'error_y_mean': error_trans_axes_mean[1],
+            'error_z_mean': error_trans_axes_mean[2],
+            'error_translation_median': error_trans_median,
+            'error_translation_mean': error_trans_mean,
+            'theta_median': theta_rot_median,
+            'theta_mean': theta_rot_mean,
+        }
+        return metrics
+
+    @torch.no_grad()
+    def _save_checkpoint(self, epoch):
+        checkpoint_dir = self.exp_folder / self.exp_name / 'ckpts'
+        if not checkpoint_dir.exists():
+            checkpoint_dir.mkdir()
+        torch.save(self.network.state_dict(), checkpoint_dir / f'{epoch}_network.pth')
+        with open(checkpoint_dir / f'{epoch}_loss_params.txt', mode='w') as f:
+            f.write(f's_x = {float(self.adaptive_loss_fn.s_x.data)}, s_q = {float(self.adaptive_loss_fn.s_q.data)}')
+        self.logger.info(f'saved checkpoints (at epoch {epoch}) to {checkpoint_dir}')
         
+    @torch.no_grad()
+    def _eval(self, epoch):
+        output_dir = self.exp_folder / self.exp_name / 'eval' / str(epoch)
+        os.makedirs(output_dir.absolute(), exist_ok=True)
+        for batch in self.test_dataset:
+            timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
+            out_x, out_q = self.network(timestamps)
+            out_mat = pp.SE3(torch.cat([out_x, out_q], dim=-1)).matrix()
+            for i in range(len(timestamps)):
+                ts = float(timestamps[i]) + self.hparams.start_timestamp
+                mat = out_mat[i].cpu().numpy()
+                np.savetxt(output_dir / f'{ts}.txt', mat)
+        self.logger.info(f'evaluation results saved to {output_dir}')
+
 
 if __name__ == '__main__':
     hparams = opts.get_opts_base().parse_args()
