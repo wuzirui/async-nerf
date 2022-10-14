@@ -74,6 +74,10 @@ class Runner:
                 self.write_tensorboard(metrics, 'val', epoch)
                 metrics.update(result)
                 self.logger.info({key_alias[key]: value for key, value in metrics.items() if key in key_alias.keys()})
+            if epoch % self.hparams.ckpt_interval == 0:
+                self._save_checkpoint(epoch)
+                if self.hparams.test_dataset is not None:
+                    self._eval()
     
     def write_tensorboard(self, metrics, split, epoch):
         for key, value in metrics.items():
@@ -147,7 +151,12 @@ class Runner:
                 'theta_mean': theta_rot_mean,
             }
             return metrics
+
+    def _save_checkpoint(self, epoch):
+        pass
         
+    def _eval(self, epoch):
+        pass
 
 if __name__ == '__main__':
     hparams = opts.get_opts_base().parse_args()
