@@ -60,7 +60,7 @@ class Runner:
     
     def run(self):
         self.logger.info(self.hparams)
-        bar = tqdm(range(self.hparams.train_epochs))
+        bar = tqdm(range(self.hparams.train_epochs), ncols=120)
         for epoch in bar:
             result = self._training_step()
             self.write_tensorboard(result, 'train', epoch)
@@ -74,9 +74,9 @@ class Runner:
                 self.write_tensorboard(metrics, 'val', epoch)
                 metrics.update(result)
                 self.logger.info({key_alias[key]: value for key, value in metrics.items() if key in key_alias.keys()})
-            if epoch % self.hparams.ckpt_interval == 0:
+            if epoch % self.hparams.ckpt_interval == 0 and epoch != 0:
                 self._save_checkpoint(epoch)
-                if self.hparams.test_dataset is not None:
+                if self.test_dataset is not None:
                     self._eval()
     
     def write_tensorboard(self, metrics, split, epoch):
@@ -153,7 +153,13 @@ class Runner:
             return metrics
 
     def _save_checkpoint(self, epoch):
-        pass
+        checkpoint_dir = self.exp_folder / self.exp_name / 'ckpts'
+        if not checkpoint_dir.exists():
+            checkpoint_dir.mkdir()
+        torch.save(self.network.state_dict(), checkpoint_dir / f'{epoch}_network.pth')
+        with open(checkpoint_dir / f'{epoch}_loss_params.txt', mode='w') as f:
+            f.write(f's_x = {float(self.adaptive_loss_fn.s_x.data)}, s_q = {float(self.adaptive_loss_fn.s_q.data)}')
+        self.logger.info(f'saved checkpoints (at epoch {epoch}) to {checkpoint_dir}')
         
     def _eval(self, epoch):
         pass

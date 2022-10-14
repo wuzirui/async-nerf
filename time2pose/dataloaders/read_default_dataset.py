@@ -42,8 +42,6 @@ class DefaultDataset():
             self.poses_matrices[:, :3, 3] /= hparams.pose_scale_factor
             self.poses_SE3 = pp.mat2SE3(self.poses_matrices)
         self.logger.info(f'loaded {self.n_frames} frames into datasets, split={split}')
-        self.use_se3 = self.hparams.pose_representation == 'se3'
-        self.use_matrix = self.hparams.pose_representation == 'matrix'
 
     def __len__(self):
         return self.n_frames
@@ -52,5 +50,4 @@ class DefaultDataset():
         return {
             "timestamp": torch.tensor([self.frames[i]]),
             "SE3": self.poses_SE3[i] if self.split != 'test' else torch.tensor(0),
-            # "matrix": self.poses_matrices[i] if self.split != 'test' else torch.tensor(0),
         }
