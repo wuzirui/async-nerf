@@ -107,4 +107,9 @@ def get_opts_base():
 
     parser.add_argument('--depth_track', type=str, help='depth track name')
     parser.add_argument('--centroid', type=int, help='centroid number to be optimized, 0-indexed')
+
+    parser.add_argument('--BARF', default=False, action='store_true', help='use BARF for >>!!depth frames!!<< pose optimization')
+    parser.add_argument('--BARF_start', type=float, default=0., help='BARF Dynamic Low-pass filter starting weight, refer to models/nerf.py')
+    parser.add_argument('--BARF_end', type=float, default=1., help='BARF Dynamic Low-pass filter ending progress, refer to models/nerf.py')
+    parser.add_argument('--lr_pose', type=float, default=3e-3)
     return parser

@@ -96,4 +96,8 @@ def _get_single_nerf_inner(hparams: Namespace, appearance_count: int, layer_dim:
                 rgb_dim,
                 xyz_dim,
                 ShiftedSoftplus() if hparams.shifted_softplus else nn.ReLU(),
-                hparams.sigma_zeroinit)
+                hparams.sigma_zeroinit,
+                BARF=hparams.BARF,
+                BARF_start=hparams.BARF_start,
+                BARF_end=hparams.BARF_end,
+                )

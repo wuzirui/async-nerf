@@ -4,7 +4,6 @@ from logging import warning
 import math
 import os
 import random
-from readline import insert_text
 import shutil
 import signal
 import sys
@@ -33,6 +32,7 @@ from mega_nerf.image_metadata import ImageMetadata
 from mega_nerf.metrics import depth_abs_rel, depth_delta, depth_rmse, depth_rmse_log, depth_sq_rel, psnr, ssim, lpips
 from mega_nerf.misc_utils import main_print, main_tqdm
 from mega_nerf.models.model_utils import get_nerf, get_bg_nerf
+from mega_nerf.models.pose_correction import PoseCorrection
 from mega_nerf.ray_utils import get_rays, get_ray_directions
 from mega_nerf.rendering import render_rays
 
@@ -152,6 +152,7 @@ class Runner:
         # 读取元信息
         self.train_items, self.val_items = self._get_image_metadata()
         main_print('Using {} train images and {} val images'.format(len(self.train_items), len(self.val_items)))
+        main_print(f'{self.n_depth_frames} depth frames in total (train + val).')
 
         """
         重新计算了相机位置的范围, 不知道为什么不重用 params.pt 中的数据
@@ -173,6 +174,12 @@ class Runner:
             self.nerf = torch.nn.parallel.DistributedDataParallel(self.nerf, device_ids=[int(os.environ['LOCAL_RANK'])],
                                                                   output_device=int(os.environ['LOCAL_RANK']))
 
+        if hparams.BARF:
+            self.pose_correction = PoseCorrection(self.n_depth_frames).to(self.device)
+            if 'RANK' in os.environ:
+                self.pose_correction = torch.nn.parallel.DistributedDataParallel(self.pose_correction, device_ids=[int(os.environ['LOCAL_RANK'])],
+                                                                                 output_device=int(os.environ['LOCAL_RANK']))
+            
         if hparams.bg_nerf:
             """
             使用前后景分离的方式训练
@@ -235,6 +242,9 @@ class Runner:
         optimizers['nerf'] = Adam(self.nerf.parameters(), lr=self.hparams.lr)
         if self.bg_nerf is not None:
             optimizers['bg_nerf'] = Adam(self.bg_nerf.parameters(), lr=self.hparams.lr)
+
+        if self.hparams.BARF:
+            optimizers['poses'] = Adam(self.pose_correction.parameters(), lr=self.hparams.lr_pose)
 
         if self.hparams.ckpt_path is not None:
             """
@@ -443,6 +453,7 @@ class Runner:
     def _training_step(self, rgbs: torch.Tensor, depths: torch.Tensor, rays: torch.Tensor, image_indices: Optional[torch.Tensor], depth_masks: torch.BoolTensor) \
             -> Tuple[Dict[str, Union[torch.Tensor, float]], bool]:
         self.iter_step += 1
+        rays = self.pose_correction(image_indices, rays, depth_masks)
         results, bg_nerf_rays_present = render_rays(nerf=self.nerf,
                                                     bg_nerf=self.bg_nerf,
                                                     rays=rays,
@@ -776,6 +787,8 @@ class Runner:
         train_paths_depth += val_paths_depth
         train_paths_depth.sort(key=lambda x: x.name)
         val_paths_set_depth = set(val_paths_depth)
+
+        self.n_depth_frames = len(train_paths_depth)
 
         image_indices = {}
         for i, train_path in enumerate(train_paths_rgb):

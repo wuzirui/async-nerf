@@ -3,10 +3,11 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 from torch import nn
+import numpy as np
 
 
 class Embedding(nn.Module):
-    def __init__(self, num_freqs: int, logscale=True):
+    def __init__(self, num_freqs: int, logscale=True, BARF=False, start=0., end=1.):
         """
         Defines a function that embeds x to (x, sin(2^k x), cos(2^k x), ...)
         """
@@ -17,15 +18,28 @@ class Embedding(nn.Module):
         else:
             self.freq_bands = torch.linspace(1, 2 ** (num_freqs - 1), num_freqs)
 
+        self.num_freqs = num_freqs
+        self.BARF = BARF
+        self.start, self.end = start, end
+
     def get_out_channels(self, d_in=3):
         return (len(self.freq_bands) * 2 + 1) * d_in
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = [x]
+    def forward(self, x: torch.Tensor, progress: Optional[float]) -> torch.Tensor:
+        """
+        Dynamic Low-pass filter from BARF
+        """
         for freq in self.freq_bands:
             out += [torch.sin(freq * x), torch.cos(freq * x)]
-
-        return torch.cat(out, -1)
+        output = torch.cat(out, -1) # x_dim + 2*x_dim*L
+        if not self.BARF: return output
+        alpha = (progress + self.start) / self.end * self.freq_bands.shape[0]
+        k = torch.arange(self.freq_bands.shape[0], dtype=torch.float32).cuda()
+        k = torch.stack([k for i in range(2 * x.shape[1])], 1).view(-1)
+        weight = (1 - (alpha - k).clamp_(min=0, max=1).mul_(np.pi).cos_()) / 2 # [L]
+        one = torch.ones(x.shape[1]).cuda()
+        weight = torch.cat((one, weight), 0)
+        return output * weight
 
 
 class ShiftedSoftplus(nn.Module):
@@ -48,14 +62,14 @@ class ShiftedSoftplus(nn.Module):
 class NeRF(nn.Module):
     def __init__(self, pos_xyz_dim: int, pos_dir_dim: int, layers: int, skip_layers: List[int], layer_dim: int,
                  appearance_dim: int, affine_appearance: bool, appearance_count: int, rgb_dim: int, xyz_dim: int,
-                 sigma_activation: nn.Module, sigma_zeroinit: bool):
+                 sigma_activation: nn.Module, sigma_zeroinit: bool, BARF: bool, BARF_start: Optional[float], BARF_end: Optional[float]):
         super(NeRF, self).__init__()
         self.xyz_dim = xyz_dim
 
         if rgb_dim > 3:
             assert pos_dir_dim == 0
 
-        self.embedding_xyz = Embedding(pos_xyz_dim)
+        self.embedding_xyz = Embedding(pos_xyz_dim, BARF=BARF, start=BARF_start, end=BARF_end)
         in_channels_xyz = xyz_dim + xyz_dim * pos_xyz_dim * 2
 
         self.skip_layers = skip_layers
