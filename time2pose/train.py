@@ -92,7 +92,8 @@ class Runner:
             predicted_trans, predicted_rot = self.network(timestamps)
 
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
-            trans_loss, rot_loss = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
+            trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = \
+                self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
 
             loss = trans_loss + rot_loss
 
@@ -102,10 +103,10 @@ class Runner:
 
             metrics = {
                 'loss': float(loss),
-                'translation loss': float(trans_loss),
-                'rotation loss': float(rot_loss),
-                'sigma_x': float(self.adaptive_loss_fn.s_x),
-                'sigma_q': float(self.adaptive_loss_fn.s_q)
+                'translation loss': float(trans_loss_raw),
+                'rotation loss': float(rot_loss_raw),
+                's_x': float(self.adaptive_loss_fn.s_x),
+                's_q': float(self.adaptive_loss_fn.s_q)
             }
 
             for key, value in metrics.items():

@@ -31,6 +31,6 @@ class AdaptiveLoss(nn.Module):
                              dim=1, p=self.norm_q).mean()
 
             if self.learnable:
-                return l_x * torch.exp(-self.s_x) + self.s_x, l_q * torch.exp(-self.s_q) + self.s_q
+                return l_x * torch.exp(-self.s_x) + self.s_x, l_q * torch.exp(-self.s_q) + self.s_q, l_x, l_q
             else:
-                return self.s_x*l_x , self.s_q*l_q
+                return self.s_x*l_x , self.s_q*l_q, l_x, l_q
