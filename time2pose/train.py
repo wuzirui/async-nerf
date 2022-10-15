@@ -14,6 +14,8 @@ import network
 from dataloaders import dataloader
 from optimization.adaptive_loss import AdaptiveLoss
 import opts
+import tools
+import rpmg
 
 
 class Runner:
@@ -85,6 +87,7 @@ class Runner:
 
     def _training_step(self):
         cum_metrics = {}
+        sum_criterion = torch.nn.MSELoss(reduction='sum')
         for batch in self.train_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
 
@@ -92,16 +95,22 @@ class Runner:
             predicted_trans, predicted_rot = self.network(timestamps)
 
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
-            trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = \
-                self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
 
+            trans_loss, rot_loss = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
+            tau = 0.22
+            gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3[:, 3:])
+            out_rmat = rpmg.RPMG.apply(predicted_rot[:, 3:], tau, 0.01, gt_rmat, 800)
+            mse_ori = sum_criterion(out_rmat, gt_rmat)
+            beta = 800
+            criterion = trans_loss + beta * mse_ori
             loss = trans_loss + rot_loss
 
             self.optimizer.zero_grad(set_to_none=True)
-            loss.backward()
+            criterion.backward()
             self.optimizer.step()
 
             metrics = {
+                'criterion': float(criterion),
                 'loss': float(loss),
                 'translation loss': float(trans_loss_raw),
                 'rotation loss': float(rot_loss_raw),
@@ -163,6 +172,7 @@ class Runner:
         with open(checkpoint_dir / f'{epoch}_loss_params.txt', mode='w') as f:
             f.write(f's_x = {float(self.adaptive_loss_fn.s_x.data)}, s_q = {float(self.adaptive_loss_fn.s_q.data)}')
         self.logger.info(f'saved checkpoints (at epoch {epoch}) to {checkpoint_dir}')
+
         
     @torch.no_grad()
     def _eval(self, epoch):
