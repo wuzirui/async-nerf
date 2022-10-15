@@ -63,6 +63,7 @@ class ImageMetadata:
         depths = np.ascontiguousarray(depths)
         if depths.shape[1] != self.W or depths.shape[0] != self.H:
             depths = cv2.resize(depths, (self.W, self.H), interpolation=cv2.INTER_LANCZOS4)
+        depths[depths < 0] = 0
         
         return torch.tensor(depths, dtype=torch.float32)
 

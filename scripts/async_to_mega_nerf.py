@@ -19,6 +19,7 @@ def _get_opts():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='path to source dataset directory')
     parser.add_argument('--depth_tracks', type=str, nargs='+', required=True, help='list of depth track names, e.g you have two depth tracks in depth_aligned/ and depth_offset/, then put "aligned offset" in this argument')
+    parser.add_argument('--pose_input_dirs', type=str, nargs='+', required=False, default=None, help='input pose sequences (possibly the inaccurate values) for depth tracks')
     parser.add_argument('--intrinsics', type=float, nargs=4, required=True, help='instrinsic tuple (fx, fy, sx, sy)')
     parser.add_argument('--pose_scale_factor', type=int, help='pose scaling factors, make sure your pose positions are in [-1, -1, -1] to [1, 1, 1]')
     parser.add_argument('--output_path', type=str, default='./output', help='path to target dataset directory')
@@ -97,7 +98,10 @@ elif hparams.pose_storage_format == 'frame':
             poses[i] = np.loadtxt(pose_path).reshape(4, 4)
         return poses
     rgb_pose_raw = load_frame_wise_pose(basepath / 'rgb', rgb_names)
-    depth_pose_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
+    if hparams.pose_input_dirs is not None:
+        depth_pose_raw = [load_frame_wise_pose(Path(hparams.pose_input_dirs[i]), depth_names[i]) for i, track in enumerate(depth_tracks)]
+    else:
+        depth_pose_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
 
 # POSE PREPROCESS
 

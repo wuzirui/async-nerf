@@ -56,6 +56,7 @@ def render_rays(nerf: nn.Module,
                 get_depth: bool,
                 get_depth_variance: bool,
                 get_bg_fg_rgb: bool,
+                progress: float,
                 ) -> Tuple[Dict[str, torch.Tensor], bool]:
     """
     根据输入的 rays, 返回对应的渲染结果
@@ -134,6 +135,7 @@ def render_rays(nerf: nn.Module,
                                       get_bg_lambda=False,
                                       flip=True,
                                       depth_real=depth_real,
+                                      progress=progress,
                                       xyz_fine_fn=lambda fine_z_vals: _depth2pts_outside(rays_o[rays_with_bg],
                                                                                          rays_d[rays_with_bg],
                                                                                          fine_z_vals,
@@ -166,6 +168,7 @@ def render_rays(nerf: nn.Module,
                            flip=False,
                            depth_real=None,
                            xyz_fine_fn=lambda fine_z_vals: (rays_o + rays_d * fine_z_vals.unsqueeze(-1), None),
+                           progress=progress,
                            )
 
     if bg_nerf is not None:
@@ -256,6 +259,7 @@ def _get_results(nerf: nn.Module,
                  flip: bool,
                  depth_real: Optional[torch.Tensor],
                  xyz_fine_fn: Callable[[torch.Tensor], Tuple[torch.Tensor, Optional[torch.Tensor]]],
+                 progress: float,
                  ) \
         -> Dict[str, torch.Tensor]:
     results = {}
@@ -266,6 +270,7 @@ def _get_results(nerf: nn.Module,
     _inference(results=results,
                typ='coarse',
                nerf=nerf,
+               progress=progress,
                rays_d=rays_d,
                image_indices=image_indices,
                hparams=hparams,
@@ -312,6 +317,7 @@ def _get_results(nerf: nn.Module,
                    get_bg_lambda=get_bg_lambda,
                    flip=flip,
                    depth_real=depth_real_fine,
+                   progress=progress,
                    )
 
         for key in INTERMEDIATE_KEYS:
@@ -337,6 +343,7 @@ def _inference(results: Dict[str, torch.Tensor],
                get_bg_lambda: bool,
                flip: bool,
                depth_real: Optional[torch.Tensor],
+               progress: float,
                ):
     depth_real = None
     N_rays_ = xyz.shape[0]
@@ -352,7 +359,6 @@ def _inference(results: Dict[str, torch.Tensor],
     # Perform model inference to get rgb and raw sigma
     B = xyz_.shape[0]
     out_chunks = []
-    out_gradients = []
     rays_d_ = rays_d.repeat(1, N_samples_, 1).view(-1, rays_d.shape[-1])
 
     if image_indices is not None:
@@ -370,9 +376,9 @@ def _inference(results: Dict[str, torch.Tensor],
             sigma_noise = torch.rand(len(xyz_chunk), 1, device=xyz_chunk.device) if nerf.training else None
 
             if hparams.use_cascade:
-                model_chunk, gradient = nerf(typ == 'coarse', xyz_chunk, sigma_noise=sigma_noise)
+                model_chunk = nerf(typ == 'coarse', xyz_chunk, sigma_noise=sigma_noise, progress=progress)
             else:
-                model_chunk, gradient = nerf(xyz_chunk, sigma_noise=sigma_noise)
+                model_chunk = nerf(xyz_chunk, sigma_noise=sigma_noise)
 
             if hparams.sh_deg is not None:
                 rgb = torch.sigmoid(
@@ -382,7 +388,6 @@ def _inference(results: Dict[str, torch.Tensor],
                 out_chunks += [torch.cat([rgb, model_chunk[:, rgb_dim:]], -1)]
             else:
                 out_chunks += [model_chunk]
-            out_gradients += [gradient]
     else:
         # (N_rays*N_samples_, embed_dir_channels)
         for i in range(0, B, hparams.model_chunk_size):
@@ -398,12 +403,11 @@ def _inference(results: Dict[str, torch.Tensor],
             sigma_noise = torch.rand(len(xyz_chunk), 1, device=xyz_chunk.device) if nerf.training else None
 
             if hparams.use_cascade:
-                model_chunk, gradient = nerf(typ == 'coarse', xyz_chunk, sigma_noise=sigma_noise)
+                model_chunk = nerf(typ == 'coarse', xyz_chunk, sigma_noise=sigma_noise)
             else:
-                model_chunk, gradient = nerf(xyz_chunk, sigma_noise=sigma_noise)
+                model_chunk = nerf(xyz_chunk, sigma_noise=sigma_noise)
 
             out_chunks += [model_chunk]
-            out_gradients += [gradient]
 
     out = torch.cat(out_chunks, 0)
     out = out.view(N_rays_, N_samples_, out.shape[-1])
