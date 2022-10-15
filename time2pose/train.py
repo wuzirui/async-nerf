@@ -14,6 +14,8 @@ import network
 from dataloaders import dataloader
 from optimization.adaptive_loss import AdaptiveLoss
 import opts
+import tools
+import rpmg
 
 
 class Runner:
@@ -81,6 +83,7 @@ class Runner:
 
     def _training_step(self):
         cum_metrics = {}
+        sum_criterion = torch.nn.MSELoss(reduction='sum')
         for batch in self.train_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
 
@@ -89,14 +92,20 @@ class Runner:
 
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
             trans_loss, rot_loss = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
-
+            tau = 0.22
+            gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3[:, 3:])
+            out_rmat = rpmg.RPMG.apply(predicted_rot[:, 3:], tau, 0.01, gt_rmat, 800)
+            mse_ori = sum_criterion(out_rmat, gt_rmat)
+            beta = 800
+            criterion = trans_loss + beta * mse_ori
             loss = trans_loss + rot_loss
 
             self.optimizer.zero_grad(set_to_none=True)
-            loss.backward()
+            criterion.backward()
             self.optimizer.step()
 
             metrics = {
+                'criterion': float(criterion),
                 'loss': float(loss),
                 'translation loss': float(trans_loss),
                 'rotation loss': float(rot_loss),
@@ -127,7 +136,9 @@ class Runner:
             gt_SE3 = torch.cat(gt_SE3, dim=0).to(self.device)
             error_trans_axes = (pred_trans - gt_SE3[:, :3]).abs().cpu().numpy() * self.hparams.pose_scale_factor
             error_trans = np.linalg.norm(error_trans_axes, axis=-1)
+            
             theta_rot = (torch.acos(torch.sum(pred_rot * gt_SE3[:, 3:], dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+            
             error_trans_axes_median = np.median(error_trans_axes, axis=1)
             error_trans_axes_mean = np.mean(error_trans_axes, axis=1)
             error_trans_median = np.median(error_trans, axis=0)
