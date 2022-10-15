@@ -96,7 +96,7 @@ class Runner:
 
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
 
-            trans_loss, rot_loss = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
+            trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
             tau = 0.22
             gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3[:, 3:])
             out_rmat = rpmg.RPMG.apply(predicted_rot[:, 3:], tau, 0.01, gt_rmat, 800)
