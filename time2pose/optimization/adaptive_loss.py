@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+import pypose as pp
 
 
 class AdaptiveLoss(nn.Module):
@@ -24,12 +25,12 @@ class AdaptiveLoss(nn.Module):
             :return: camera pose loss
             """
             # Position loss
-            l_x = torch.norm(gt_pose[:, 0:3] - est_pose[:, 0:3], dim=1, p=self.norm_x).mean()
+            l_x = torch.norm(gt_pose.translation() - est_pose[:, 0:3], dim=1, p=self.norm_x).mean()
             # Orientation loss (normalized to unit norm)
-            l_q = torch.norm(F.normalize(gt_pose[:, 3:], p=2, dim=1) - F.normalize(est_pose[:, 3:], p=2, dim=1),
+            l_q = torch.norm(F.normalize(gt_pose.rotation(), p=2, dim=1) - F.normalize(est_pose[:, 3:], p=2, dim=1),
                              dim=1, p=self.norm_q).mean()
 
             if self.learnable:
-                return l_x * torch.exp(-self.s_x) + self.s_x, l_q * torch.exp(-self.s_q) + self.s_q
+                return l_x * torch.exp(-self.s_x) + self.s_x, l_q * torch.exp(-self.s_q) + self.s_q, l_x, l_q
             else:
-                return self.s_x*l_x , self.s_q*l_q
+                return self.s_x*l_x , self.s_q*l_q, l_x, l_q
