@@ -23,11 +23,11 @@ class ImageMetadata:
         self._mask_path = mask_path
         self.is_val = is_val
         self.pose_scale_factor = pose_scale_factor
-        self.is_depth = is_depth
         if gt_pose_path is not None:
-            self.gt_pose = np.loadtxt(gt_pose_path).reshape(4, 4)
+            self.gt_pose = np.loadtxt(gt_pose_path).reshape(3, 4)
         else:
             self.gt_pose = c2w
+        self.is_depth = is_depth
     
     def get_gt_pose(self):
         return self.gt_pose

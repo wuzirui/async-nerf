@@ -461,7 +461,7 @@ class Runner:
         if self.pose_correction is not None:
             rays = self.pose_correction(image_indices, rays, depth_masks)
             c2ws = self.pose_correction.forward_c2ws(image_indices, c2ws, depth_masks)
-            gt_c2ws = pp.mat2SE3(gt_c2ws.double()).float()
+            gt_c2ws = pp.mat2SE3(gt_c2ws).float()
         self.progress = self.iter_step/self.hparams.train_iterations
         results, bg_nerf_rays_present = render_rays(nerf=self.nerf,
                                                     bg_nerf=self.bg_nerf,
@@ -483,16 +483,21 @@ class Runner:
             psnr_ = psnr(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks)
             depth_variance = results[f'depth_variance_{typ}'].mean()
             if self.pose_correction is not None and self.hparams.have_gt_poses:
-                rotation_mse = F.mse_loss(c2ws.rotation().matrix(), gt_c2ws.rotation().matrix())
-                translation_mse = F.mse_loss(c2ws.translation(), gt_c2ws.translation())
+                error_trans_axes = (c2ws.translation() - gt_c2ws.translation()).abs().cpu().numpy() * self.pose_scale_factor
+                error_trans = np.linalg.norm(error_trans_axes, axis=-1)
+                theta_rot = (torch.acos(torch.sum(c2ws.rotation() * gt_c2ws.rotation(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+                error_trans_median = np.median(error_trans, axis=0)
+                error_trans_mean = np.mean(error_trans, axis=0)
+                theta_rot_median = np.median(theta_rot, axis=0)
+                theta_rot_mean = np.mean(theta_rot, axis=0)
 
         metrics = {
             'psnr': psnr_,
             'depth_variance': depth_variance,
-            'rot_mse_mean': rotation_mse.mean(),
-            'rot_mse_median': rotation_mse.median(),
-            'trans_mse_mean': translation_mse.mean(),
-            'trans_mse_median': translation_mse.median(),
+            'rot_mse_mean': theta_rot_mean,
+            'rot_mse_median': theta_rot_median,
+            'trans_mse_mean': error_trans_mean,
+            'trans_mse_median': error_trans_median,
         }
 
         photo_loss = F.mse_loss(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks, reduction='mean') * self.hparams.photo_weight
@@ -857,8 +862,8 @@ class Runner:
                 if candidate.exists():
                     depth_path = candidate
                     break
-            gt_pose_path = metadata_path.parent.parent.parent / f'gt_pose_{depth_name}' / '{}{}'.format(metadata_path.stem, '.txt')
-            assert depth_path is not None, metadata_path.parent / f'depthvis_{depth_name}' / '{}{}'.format(metadata_path.stem, extension)
+            gt_pose_path = metadata_path.parent.parent / f'pose_gt_{depth_name}' / '{}{}'.format(metadata_path.stem, '.txt')
+            assert depth_path is not None, metadata_path.parent.parent / f'depthvis_{depth_name}' / '{}{}'.format(metadata_path.stem, extension)
             assert not self.hparams.have_gt_poses or gt_pose_path.exists()
             image_path = depth_path
 
