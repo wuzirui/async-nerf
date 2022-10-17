@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import pypose as pp
 from PIL import Image
 from torch.cuda.amp import GradScaler
 from torch.optim import Adam
@@ -347,7 +348,9 @@ class Runner:
                         item['rgbs'].to(self.device, non_blocking=True) if item['rgbs'] is not None else None,
                         item['depths'].to(self.device, non_blocking=True) if item['depths'] is not None else None,
                         item['rays'].to(self.device, non_blocking=True),
-                        image_indices, item['depth_mask'].to(self.device, non_blocking=True))
+                        image_indices, item['depth_mask'].to(self.device, non_blocking=True),
+                        c2ws=item['c2ws'].to(self.device, non_blocking=True), 
+                        gt_c2ws=item['gt_c2ws'].to(self.device, non_blocking=True))
 
                     with torch.no_grad():
                         for key, val in metrics.items():
@@ -452,11 +455,13 @@ class Runner:
             dist.barrier()
         # end _setup_experiment_dir
 
-    def _training_step(self, rgbs: torch.Tensor, depths: torch.Tensor, rays: torch.Tensor, image_indices: Optional[torch.Tensor], depth_masks: torch.BoolTensor) \
+    def _training_step(self, rgbs: torch.Tensor, depths: torch.Tensor, rays: torch.Tensor, image_indices: Optional[torch.Tensor], depth_masks: torch.BoolTensor, c2ws: torch.FloatTensor, gt_c2ws: torch.FloatTensor) \
             -> Tuple[Dict[str, Union[torch.Tensor, float]], bool]:
         self.iter_step += 1
         if self.pose_correction is not None:
             rays = self.pose_correction(image_indices, rays, depth_masks)
+            c2ws = self.pose_correction.forward_c2ws(image_indices, c2ws, depth_masks)
+            gt_c2ws = pp.mat2SE3(gt_c2ws.double()).float()
         self.progress = self.iter_step/self.hparams.train_iterations
         results, bg_nerf_rays_present = render_rays(nerf=self.nerf,
                                                     bg_nerf=self.bg_nerf,
@@ -477,10 +482,17 @@ class Runner:
         with torch.no_grad():
             psnr_ = psnr(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks)
             depth_variance = results[f'depth_variance_{typ}'].mean()
+            if self.pose_correction is not None and self.hparams.have_gt_poses:
+                rotation_mse = F.mse_loss(c2ws.rotation().matrix(), gt_c2ws.rotation().matrix())
+                translation_mse = F.mse_loss(c2ws.translation(), gt_c2ws.translation())
 
         metrics = {
             'psnr': psnr_,
             'depth_variance': depth_variance,
+            'rot_mse_mean': rotation_mse.mean(),
+            'rot_mse_median': rotation_mse.median(),
+            'trans_mse_mean': translation_mse.mean(),
+            'trans_mse_median': translation_mse.median(),
         }
 
         photo_loss = F.mse_loss(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks, reduction='mean') * self.hparams.photo_weight
@@ -829,6 +841,7 @@ class Runner:
         Return:
             ImageMetadata: 元信息
         """
+        gt_pose_path = None
         if not is_depth:
             image_path = None
             for extension in ['.jpg', '.JPG', '.png', '.PNG']:
@@ -844,7 +857,9 @@ class Runner:
                 if candidate.exists():
                     depth_path = candidate
                     break
-            assert depth_path is not None, metadata_path.parent.parent / f'depthvis_{depth_name}' / '{}{}'.format(metadata_path.stem, extension)
+            gt_pose_path = metadata_path.parent.parent.parent / f'gt_pose_{depth_name}' / '{}{}'.format(metadata_path.stem, '.txt')
+            assert depth_path is not None, metadata_path.parent / f'depthvis_{depth_name}' / '{}{}'.format(metadata_path.stem, extension)
+            assert not self.hparams.have_gt_poses or gt_pose_path.exists()
             image_path = depth_path
 
         """
@@ -884,7 +899,8 @@ class Runner:
         当在 hparams 中指定 all_val 为真时, 不使用 masks 进行 inference
         """
         return ImageMetadata(image_path, metadata['c2w'] if is_depth else metadata['c2w'], metadata['W'] // scale_factor, metadata['H'] // scale_factor,
-                             intrinsics, image_index, None if (is_val and self.hparams.all_val) else mask_path, is_val, self.pose_scale_factor, is_depth)
+                             intrinsics, image_index, None if (is_val and self.hparams.all_val) else mask_path, is_val, self.pose_scale_factor, is_depth, 
+                             gt_pose_path if self.hparams.have_gt_poses else None)
 
     def _get_experiment_path(self) -> Path:
         """

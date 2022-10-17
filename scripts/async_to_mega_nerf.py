@@ -102,6 +102,7 @@ elif hparams.pose_storage_format == 'frame':
         depth_pose_raw = [load_frame_wise_pose(Path(hparams.pose_input_dirs[i]), depth_names[i]) for i, track in enumerate(depth_tracks)]
     else:
         depth_pose_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
+    depth_pose_gt_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
 
 # POSE PREPROCESS
 
@@ -133,6 +134,7 @@ def pose_transform(poses_raw):
 rgb_pose = pose_transform(rgb_pose_raw)
 rgb_positions = torch.cat([c2w[:3, 3].unsqueeze(0) for c2w in rgb_pose])
 depth_pose = [pose_transform(depth_pose_raw_track) for depth_pose_raw_track in depth_pose_raw]
+depth_pose_gt = [pose_transform(depth_pose_raw_track) for depth_pose_raw_track in depth_pose_gt_raw]
 depth_positions = [torch.cat([c2w[:3, 3].unsqueeze(0) for c2w in depth_pose_track]) for depth_pose_track in depth_pose]
 
 max_values = rgb_positions.max(0)[0]
@@ -161,10 +163,10 @@ dirs = [
     mega_path / 'train' / 'metadata_rgb', 
     mega_path / 'val' / 'rgbs',
     mega_path / 'val' / 'metadata_rgb' ] + \
-    [(mega_path / 'train' / f'depth_{track}') for track in depth_tracks] + \
+    [(mega_path / 'train' / f'pose_gt_{track}') for track in depth_tracks] + \
     [(mega_path / 'train' / f'depthvis_{track}') for track in depth_tracks] + \
     [(mega_path / 'train' / f'metadata_depth_{track}') for track in depth_tracks] + \
-    [(mega_path / 'val' / f'depth_{track}') for track in depth_tracks] + \
+    [(mega_path / 'val' / f'pose_gt_{track}') for track in depth_tracks] + \
     [(mega_path / 'val' / f'depthvis_{track}') for track in depth_tracks] + \
     [(mega_path / 'val' / f'metadata_depth_{track}') for track in depth_tracks]
 
@@ -172,7 +174,7 @@ for dir in dirs:
     if not dir.exists():
         dir.mkdir(parents=True)
 
-def save_track(name, poses, positions, image_names, depthvis_name):
+def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None):
     with open(os.path.join(mega_path, f'mappings_{name}.txt'),mode='w') as f:
         for idx, _ in enumerate(tqdm(image_names)):
             if idx % int(positions.shape[0] / num_val) == 0:
@@ -188,12 +190,7 @@ def save_track(name, poses, positions, image_names, depthvis_name):
                 depthvis_path = depthvis_name[idx]
                 depthvis = np.asarray(Image.open(depthvis_path).convert("L"), dtype=np.float32)
                 cv2.imwrite(os.path.join(split_dir, 'depthvis' + name.split('depth')[1],'{0:06d}.jpg'.format(idx)), depthvis)
-
-                depth_path = image_names[idx]
-                depth, scale = pfm_utils.read_pfm(depth_path)
-                depth = np.flip(depth, axis=0)
-                pfm_utils.write_pfm(os.path.join(split_dir, name, '{0:06d}.pfm'.format(idx)), depth, scale)
-                image = depth
+                np.savetxt(os.path.join(split_dir, 'pose_gt_' + name.split('depth')[1],'{0:06d}.txt'.format(idx)), gt_poses[idx])
 
             camera_in_drb = poses[idx].clone() #这个操作会改变原来的
             camera_in_drb[:, 3] = (camera_in_drb[:, 3] - origin) / pose_scale_factor
@@ -217,7 +214,7 @@ def save_track(name, poses, positions, image_names, depthvis_name):
 print("exporting rgb data")
 save_track('rgb', rgb_pose, rgb_positions, rgb_names, None)
 print("exporting depth data")
-[save_track(f"depth_{track}", depth_pose[i], depth_positions[i], depth_names[i], depthvis_names[i]) for i, track in enumerate(tqdm(depth_tracks))]
+[save_track(f"depth_{track}", depth_pose[i], depth_positions[i], depth_names[i], depthvis_names[i], depth_pose_gt[i]) for i, track in enumerate(tqdm(depth_tracks))]
 
 coordinates = {
     'origin_drb': origin,

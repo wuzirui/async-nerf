@@ -112,4 +112,5 @@ def get_opts_base():
     parser.add_argument('--BARF_start', type=float, default=0., help='BARF Dynamic Low-pass filter starting weight, refer to models/nerf.py')
     parser.add_argument('--BARF_end', type=float, default=1., help='BARF Dynamic Low-pass filter ending progress, refer to models/nerf.py')
     parser.add_argument('--lr_pose', type=float, default=3e-3)
+    parser.add_argument('--have_gt_poses', default=False, action='store_true', help='evaluate depth pose metrics using ground-truth pose')
     return parser

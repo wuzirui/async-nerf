@@ -14,4 +14,10 @@ class PoseCorrection(nn.Module):
         rays[:, :3] += correction.translation()
         rays[:, 3:6] = (correction.rotation().matrix() @ rays[:, 3:6, None]).squeeze()
         return rays
-        
+    
+    def forward_c2ws(self, image_indices, c2ws, depth_mask):
+        correction = torch.where(depth_mask == 1, self.correction_dict[image_indices.long()], pp.identity_SE3(len(c2ws)).to(c2ws.device))
+        correction = pp.SE3(correction)
+        c2ws_pp = pp.mat2SE3(c2ws.double()).float()     # weird problem of pypose
+        ret = correction * c2ws_pp
+        return ret

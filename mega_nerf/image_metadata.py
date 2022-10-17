@@ -13,7 +13,7 @@ import re
 
 class ImageMetadata:
     def __init__(self, image_path: Path, c2w: torch.Tensor, W: int, H: int, intrinsics: torch.Tensor, image_index: int,
-                 mask_path: Optional[Path], is_val: bool, pose_scale_factor, is_depth: bool):
+                 mask_path: Optional[Path], is_val: bool, pose_scale_factor, is_depth: bool, gt_pose_path: Optional[Path]):
         self.image_path = image_path
         self.c2w = c2w
         self.W = W
@@ -24,6 +24,13 @@ class ImageMetadata:
         self.is_val = is_val
         self.pose_scale_factor = pose_scale_factor
         self.is_depth = is_depth
+        if gt_pose_path is not None:
+            self.gt_pose = np.loadtxt(gt_pose_path).reshape(4, 4)
+        else:
+            self.gt_pose = c2w
+    
+    def get_gt_pose(self):
+        return self.gt_pose
     
     def is_depth_frame(self) -> bool:
         return self.is_depth

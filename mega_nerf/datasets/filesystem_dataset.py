@@ -32,6 +32,7 @@ class FilesystemDataset(Dataset):
         self._near = near
         self._far = far
         self._ray_altitude_range = ray_altitude_range
+        self._gt_c2ws = [item.get_gt_pose() for item in metadata_items]
 
         intrinsics = torch.cat(
             [torch.cat([torch.FloatTensor([x.W, x.H]), x.intrinsics]).unsqueeze(0) for x in metadata_items])
@@ -95,7 +96,9 @@ class FilesystemDataset(Dataset):
             'depths': self._loaded_depths[idx],
             'depth_mask': self._loaded_depth_mask[idx],
             'rays': self._loaded_rays[idx],
-            'img_indices': self._loaded_img_indices[idx]
+            'img_indices': self._loaded_img_indices[idx],
+            'c2ws': self._c2ws[self._loaded_img_indices[idx]],
+            'gt_c2ws': self._gt_c2ws[self._loaded_img_indices[idx]],
         }
 
     def _load_chunk_inner(self) -> Tuple[str, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.ShortTensor]:
@@ -123,8 +126,6 @@ class FilesystemDataset(Dataset):
                 image_rays = get_rays_batch(self._directions[unique_pixel_indices.long()],
                                             c2ws, self._near, self._far,
                                             self._ray_altitude_range).cpu()
-
-                del c2ws
 
                 loaded_rays.append(image_rays[inverse_img_indices, inverse_pixel_indices])
 
