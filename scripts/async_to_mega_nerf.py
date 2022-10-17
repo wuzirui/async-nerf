@@ -182,6 +182,9 @@ def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None
             else:
                 split_dir = os.path.join(mega_path,"train")
             
+            camera_in_drb = poses[idx].clone() #这个操作会改变原来的
+            camera_in_drb[:, 3] = (camera_in_drb[:, 3] - origin) / pose_scale_factor
+
             if name == 'rgb':
                 color = cv2.imread(str(rgb_names[idx]),-1)
                 cv2.imwrite(os.path.join(split_dir,'rgbs','{0:06d}.jpg'.format(idx)),color)
@@ -189,11 +192,14 @@ def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None
             else:
                 depthvis_path = depthvis_name[idx]
                 depthvis = np.asarray(Image.open(depthvis_path).convert("L"), dtype=np.float32)
+                image = depthvis
                 cv2.imwrite(os.path.join(split_dir, 'depthvis' + name.split('depth')[1],'{0:06d}.jpg'.format(idx)), depthvis)
-                np.savetxt(os.path.join(split_dir, 'pose_gt_' + name.split('depth')[1],'{0:06d}.txt'.format(idx)), gt_poses[idx])
+                gt_poses_drb = gt_poses[idx].clone()
+                gt_poses_drb[:, :3] = (gt_poses_drb[:, :3] - origin) / pose_scale_factor
+                np.savetxt(os.path.join(split_dir, 'pose_gt' + name.split('depth')[1],'{0:06d}.txt'.format(idx)), torch.cat([
+                    gt_poses_drb[:, 1:2], -gt_poses_drb[:, :1], gt_poses_drb[:, 2:4]], -1
+                ))
 
-            camera_in_drb = poses[idx].clone() #这个操作会改变原来的
-            camera_in_drb[:, 3] = (camera_in_drb[:, 3] - origin) / pose_scale_factor
 
             assert np.logical_and(camera_in_drb >= -1, camera_in_drb <= 1).all()
             metadata_name = '{0:06d}.pt'.format(idx)
