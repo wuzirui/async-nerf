@@ -98,8 +98,8 @@ class Runner:
 
             trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
             tau = 0.22
-            gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3[:, 3:])
-            out_rmat = rpmg.RPMG.apply(predicted_rot[:, 3:], tau, 0.01, gt_rmat, 800)
+            gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3.rotation())
+            out_rmat = rpmg.RPMG.apply(predicted_rot, tau, 0.01, gt_rmat, 800)
             mse_ori = sum_criterion(out_rmat, gt_rmat)
             beta = 800
             criterion = trans_loss + beta * mse_ori
