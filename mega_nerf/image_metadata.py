@@ -65,7 +65,7 @@ class ImageMetadata:
         """
         depths = Image.open(self.image_path).convert("L")
         depths = np.asarray(depths, dtype=np.float32)
-        depths[depths > 150] = 150
+        depths[depths > 300] = 300
         depths /= self.pose_scale_factor
         depths = np.ascontiguousarray(depths)
         if depths.shape[1] != self.W or depths.shape[0] != self.H:

@@ -461,7 +461,7 @@ class Runner:
         if self.pose_correction is not None:
             rays = self.pose_correction(image_indices, rays, depth_masks)
             c2ws = self.pose_correction.forward_c2ws(image_indices, c2ws, depth_masks)
-            gt_c2ws = pp.mat2SE3(gt_c2ws).float()
+            gt_c2ws = pp.mat2SE3(gt_c2ws.double()).float()
         self.progress = self.iter_step/self.hparams.train_iterations
         results, bg_nerf_rays_present = render_rays(nerf=self.nerf,
                                                     bg_nerf=self.bg_nerf,
@@ -479,6 +479,7 @@ class Runner:
         # print(f"rays shape = {rays.shape}, rendered rgb shape = {results[f'rgb_{typ}'].shape}, rendered depth shape = {results[f'depth_{typ}'].shape}")
 
         color_masks = 1 - depth_masks
+        metrics = {}
         with torch.no_grad():
             psnr_ = psnr(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks)
             depth_variance = results[f'depth_variance_{typ}'].mean()
@@ -490,15 +491,17 @@ class Runner:
                 error_trans_mean = np.mean(error_trans, axis=0)
                 theta_rot_median = np.median(theta_rot, axis=0)
                 theta_rot_mean = np.mean(theta_rot, axis=0)
+                metrics.update({
+                    'rot_mse_mean': theta_rot_mean,
+                    'rot_mse_median': theta_rot_median,
+                    'trans_mse_mean': error_trans_mean,
+                    'trans_mse_median': error_trans_median,
+                })
 
-        metrics = {
+        metrics.update({
             'psnr': psnr_,
             'depth_variance': depth_variance,
-            'rot_mse_mean': theta_rot_mean,
-            'rot_mse_median': theta_rot_median,
-            'trans_mse_mean': error_trans_mean,
-            'trans_mse_median': error_trans_median,
-        }
+        })
 
         photo_loss = F.mse_loss(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks, reduction='mean') * self.hparams.photo_weight
         extra_loss = 0
