@@ -1,3 +1,4 @@
+from cmath import tau
 import os
 import math
 import torch
@@ -64,7 +65,9 @@ class Runner:
         self.logger.info(self.hparams)
         bar = tqdm(range(self.hparams.train_epochs), ncols=120)
         for epoch in bar:
-            result = self._training_step()
+            ratio = min(epoch // (self.hparams.train_epochs // 10), 9) / 9
+            tau = 1 / 20 + ratio * (1 / 4 - 1 / 20)
+            result = self._training_step(tau)
             self.write_tensorboard(result, 'train', epoch)
             bar.update(1)
 
@@ -85,7 +88,7 @@ class Runner:
         for key, value in metrics.items():
             self.writer.add_scalar(f'{split}/{key}', value, global_step=epoch)
 
-    def _training_step(self):
+    def _training_step(self, tau):
         cum_metrics = {}
         sum_criterion = torch.nn.MSELoss(reduction='sum')
         for batch in self.train_dataset:
@@ -95,13 +98,11 @@ class Runner:
             predicted_trans, predicted_rot = self.network(timestamps)
 
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
-
             trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
-            tau = 0.22
             gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3.rotation())
             out_rmat = rpmg.RPMG.apply(predicted_rot, tau, 0.01, gt_rmat, 800)
             mse_ori = sum_criterion(out_rmat, gt_rmat)
-            beta = 800
+            beta = 1
             criterion = trans_loss + beta * mse_ori
             loss = trans_loss + rot_loss
 
@@ -115,7 +116,8 @@ class Runner:
                 'translation loss': float(trans_loss_raw),
                 'rotation loss': float(rot_loss_raw),
                 's_x': float(self.adaptive_loss_fn.s_x),
-                's_q': float(self.adaptive_loss_fn.s_q)
+                's_q': float(self.adaptive_loss_fn.s_q),
+                'manifold loss': float(mse_ori),
             }
 
             for key, value in metrics.items():

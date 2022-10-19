@@ -176,10 +176,10 @@ def compute_rotation_matrix_from_quaternion( quaternion, n_flag=True):
         quat = normalize_vector(quaternion)
     else:
         quat = quaternion
-    qw = quat[...,0].view(batch, 1)
-    qx = quat[...,1].view(batch, 1)
-    qy = quat[...,2].view(batch, 1)
-    qz = quat[...,3].view(batch, 1)
+    qw = quat[...,3].view(batch, 1)
+    qx = quat[...,0].view(batch, 1)
+    qy = quat[...,1].view(batch, 1)
+    qz = quat[...,2].view(batch, 1)
 
     # Unit quaternion rotation matrices computatation  
     xx = qx*qx
