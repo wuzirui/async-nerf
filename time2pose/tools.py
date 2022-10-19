@@ -456,7 +456,7 @@ def compute_quaternions_from_rotation_matrices(matrices):
     x= (matrices[:,2,1] - matrices[:,1,2]) / w4
     y= (matrices[:,0,2] - matrices[:,2,0]) / w4
     z= (matrices[:,1,0] - matrices[:,0,1]) / w4
-    quats = torch.cat( (w.view(batch,1), x.view(batch, 1),y.view(batch, 1), z.view(batch, 1) ), 1   )
+    quats = torch.cat( ( x.view(batch, 1),y.view(batch, 1), z.view(batch, 1), w.view(batch,1) ), 1   )
     quats = normalize_vector(quats)
     return quats
     
