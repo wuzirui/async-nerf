@@ -15,7 +15,6 @@ import network
 from dataloaders import dataloader
 from optimization.adaptive_loss import AdaptiveLoss
 import opts
-import tools
 import rpmg
 
 
@@ -65,9 +64,7 @@ class Runner:
         self.logger.info(self.hparams)
         bar = tqdm(range(self.hparams.train_epochs), ncols=120)
         for epoch in bar:
-            ratio = min(epoch // (self.hparams.train_epochs // 10), 9) / 9
-            tau = 1 / 20 + ratio * (1 / 4 - 1 / 20)
-            result = self._training_step(tau)
+            result = self._training_step(epoch)
             self.write_tensorboard(result, 'train', epoch)
             bar.update(1)
 
@@ -88,30 +85,32 @@ class Runner:
         for key, value in metrics.items():
             self.writer.add_scalar(f'{split}/{key}', value, global_step=epoch)
 
-    def _training_step(self, tau):
+    def _training_step(self, epoch):
         cum_metrics = {}
-        sum_criterion = torch.nn.MSELoss(reduction='sum')
         for batch in self.train_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
 
             #inference through network
             predicted_trans, predicted_rot = self.network(timestamps)
 
+            self.optimizer.zero_grad(set_to_none=True)
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
             trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
-            gt_rmat = tools.compute_rotation_matrix_from_quaternion(gt_se3.rotation())
-            out_rmat = rpmg.RPMG.apply(predicted_rot, tau, 0.01, gt_rmat, 800)
-            mse_ori = sum_criterion(out_rmat, gt_rmat)
-            beta = 1
-            criterion = trans_loss + beta * mse_ori
-            loss = trans_loss + rot_loss
+            if self.hparams.use_manifold:
+                ratio = min(epoch // (self.hparams.train_epochs // 10), 9) / 9
+                tau = 1 / 20 + ratio * (1 / 4 - 1 / 20)
+                gt_rmat = gt_se3.rotation().matrix()
+                out_rmat = rpmg.RPMG.apply(predicted_rot, tau, self.hparams.manifold_lambda, gt_rmat, self.hparams.rotation_weight)
+                mse_ori = F.mse_loss(out_rmat, gt_rmat, reduction='mean')
+                loss = self.hparams.translation_weight * trans_loss + mse_ori
+                loss.backward()
+            else:
+                loss = trans_loss + rot_loss
+                loss.backward()
 
-            self.optimizer.zero_grad(set_to_none=True)
-            criterion.backward()
             self.optimizer.step()
 
             metrics = {
-                'criterion': float(criterion),
                 'loss': float(loss),
                 'translation loss': float(trans_loss_raw),
                 'rotation loss': float(rot_loss_raw),
