@@ -30,6 +30,10 @@ class DefaultDataset():
             assert self.datapath.exists(), "specific dataset split not exists: " + str(self.datapath.absolute())
             # split datasets
             self.src_files = [x for x in self.datapath.iterdir() if x.suffix == '.txt']
+
+            timestamps = [float(x.stem) - hparams.start_timestamp for x in self.src_files]
+            print(f'min timestamp = {min(timestamps)}, max timestamp = {max(timestamps)}')
+            
             self.train_idx = [x for i, x in enumerate(self.src_files) if i % (len(self.src_files) // hparams.n_val) != 0]
             self.val_idx = [x for x in self.src_files if x not in self.train_idx]
             self.src_files = sorted([x for x in self.src_files if x in (self.train_idx if split =='train' else self.val_idx)], key=lambda x: float(x.stem))

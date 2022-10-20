@@ -92,6 +92,7 @@ class Runner:
 
             #inference through network
             predicted_trans, predicted_rot = self.network(timestamps)
+            metrics = {}
 
             self.optimizer.zero_grad(set_to_none=True)
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
@@ -103,6 +104,7 @@ class Runner:
                 out_rmat = rpmg.RPMG.apply(predicted_rot, tau, self.hparams.manifold_lambda, gt_rmat, self.hparams.rotation_weight)
                 mse_ori = F.mse_loss(out_rmat, gt_rmat, reduction='mean')
                 loss = self.hparams.translation_weight * trans_loss + mse_ori
+                metrics['manifold loss'] = float(mse_ori)
                 loss.backward()
             else:
                 loss = trans_loss + rot_loss
@@ -110,14 +112,13 @@ class Runner:
 
             self.optimizer.step()
 
-            metrics = {
+            metrics.update({
                 'loss': float(loss),
                 'translation loss': float(trans_loss_raw),
                 'rotation loss': float(rot_loss_raw),
                 's_x': float(self.adaptive_loss_fn.s_x),
                 's_q': float(self.adaptive_loss_fn.s_q),
-                'manifold loss': float(mse_ori),
-            }
+            })
 
             for key, value in metrics.items():
                 if key not in cum_metrics:
