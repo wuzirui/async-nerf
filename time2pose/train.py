@@ -103,7 +103,7 @@ class Runner:
                 gt_rmat = gt_se3.rotation().matrix()
                 out_rmat = rpmg.RPMG.apply(predicted_rot, tau, self.hparams.manifold_lambda, gt_rmat, self.hparams.rotation_weight)
                 mse_ori = F.mse_loss(out_rmat, gt_rmat, reduction='mean')
-                loss = self.hparams.translation_weight * trans_loss + mse_ori
+                loss = self.hparams.translation_weight * trans_loss_raw + mse_ori
                 metrics['manifold loss'] = float(mse_ori)
                 loss.backward()
             else:
@@ -142,9 +142,9 @@ class Runner:
         pred_trans = torch.cat(pred_trans, dim=0).to(self.device)
         pred_rot = torch.cat(pred_rot, dim=0).to(self.device)
         gt_SE3 = torch.cat(gt_SE3, dim=0).to(self.device)
-        error_trans_axes = (pred_trans - gt_SE3[:, :3]).abs().cpu().numpy() * self.hparams.pose_scale_factor
+        error_trans_axes = (pred_trans - gt_SE3.translation()).abs().cpu().numpy() * self.hparams.pose_scale_factor
         error_trans = np.linalg.norm(error_trans_axes, axis=-1)
-        theta_rot = (torch.acos(torch.sum(pred_rot * gt_SE3[:, 3:], dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+        theta_rot = (torch.acos(torch.sum(pred_rot * gt_SE3.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
         error_trans_axes_median = np.median(error_trans_axes, axis=1)
         error_trans_axes_mean = np.mean(error_trans_axes, axis=1)
         error_trans_median = np.median(error_trans, axis=0)

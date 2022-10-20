@@ -58,7 +58,7 @@ def compute_pose_from_rotation_matrix(T_pose, r_matrix):
 def normalize_vector( v):
     batch=v.shape[0]
     v_mag = torch.sqrt(v.pow(2).sum(1))# batch
-    v_mag = torch.max(v_mag, torch.autograd.Variable(torch.FloatTensor([1e-8]).to(v.device)))
+    v_mag = torch.max(v_mag, torch.autograd.Variable(torch.DoubleTensor([1e-8]).to(v.device)))
     v_mag = v_mag.view(batch,1).expand(batch,v.shape[1])
     v = v/v_mag
     return v
@@ -160,7 +160,7 @@ def stereographic_unproject(a, axis=None):
 def compute_rotation_matrix_from_ortho5d(a):
     batch = a.shape[0]
     proj_scale_np = np.array([np.sqrt(2)+1, np.sqrt(2)+1, np.sqrt(2)]) #3
-    proj_scale = torch.autograd.Variable(torch.FloatTensor(proj_scale_np).cuda()).view(1,3).repeat(batch,1) #batch,3
+    proj_scale = torch.autograd.Variable(torch.DoubleTensor(proj_scale_np).cuda()).view(1,3).repeat(batch,1) #batch,3
     
     u = stereographic_unproject(a[:, 2:5] * proj_scale, axis=0)#batch*4
     norm = torch.sqrt(torch.pow(u[:,1:],2).sum(1)) #batch
@@ -346,9 +346,9 @@ def get_sampled_rotation_matrices_by_quat(batch):
     
 def get_sampled_rotation_matrices_by_hpof(batch):
     
-    theta = torch.autograd.Variable(torch.FloatTensor(np.random.uniform(0,1, batch)*np.pi).cuda()) #[0, pi]
-    phi   =  torch.autograd.Variable(torch.FloatTensor(np.random.uniform(0,2,batch)*np.pi).cuda())      #[0,2pi)
-    tao   = torch.autograd.Variable(torch.FloatTensor(np.random.uniform(0,2,batch)*np.pi).cuda())      #[0,2pi)
+    theta = torch.autograd.Variable(torch.DoubleTensor(np.random.uniform(0,1, batch)*np.pi).cuda()) #[0, pi]
+    phi   =  torch.autograd.Variable(torch.DoubleTensor(np.random.uniform(0,2,batch)*np.pi).cuda())      #[0,2pi)
+    tao   = torch.autograd.Variable(torch.DoubleTensor(np.random.uniform(0,2,batch)*np.pi).cuda())      #[0,2pi)
     
     
     qw = torch.cos(theta/2)*torch.cos(tao/2)
@@ -378,7 +378,7 @@ def get_sampled_rotation_matrices_by_hpof(batch):
 #axisAngle batch*3*3s angle, x,y,z
 def get_sampled_rotation_matrices_by_axisAngle( batch):
     
-    theta = torch.autograd.Variable(torch.FloatTensor(np.random.uniform(-1,1, batch)*np.pi).cuda()) #[0, pi] #[-180, 180]
+    theta = torch.autograd.Variable(torch.DoubleTensor(np.random.uniform(-1,1, batch)*np.pi).cuda()) #[0, pi] #[-180, 180]
     sin = torch.sin(theta)
     axis = torch.autograd.Variable(torch.randn(batch, 3).cuda())
     axis = normalize_vector(axis) #batch*3
@@ -415,7 +415,7 @@ def compute_euler_angles_from_rotation_matrices(rotation_matrices):
     R=rotation_matrices
     sy = torch.sqrt(R[:,0,0]*R[:,0,0]+R[:,1,0]*R[:,1,0])
     singular= sy<1e-6
-    singular=singular.float()
+    singular=singular.double()
         
     x=torch.atan2(R[:,2,1], R[:,2,2])
     y=torch.atan2(-R[:,2,0], sy)
