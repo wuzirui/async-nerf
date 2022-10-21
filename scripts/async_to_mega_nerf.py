@@ -19,7 +19,7 @@ def _get_opts():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='path to source dataset directory')
     parser.add_argument('--depth_tracks', type=str, nargs='+', required=True, help='list of depth track names, e.g you have two depth tracks in depth_aligned/ and depth_offset/, then put "aligned offset" in this argument')
-    parser.add_argument('--pose_input_dirs', type=str, nargs='+', required=False, default=None, help='input pose sequences (possibly the inaccurate values) for depth tracks')
+    parser.add_argument('--pose_input_dirs', type=str, nargs='+', required=False, default=None, help='input pose sequences (possibly the inaccurate or misaligned values) for depth tracks')
     parser.add_argument('--intrinsics', type=float, nargs=4, required=True, help='instrinsic tuple (fx, fy, sx, sy)')
     parser.add_argument('--pose_scale_factor', type=int, help='pose scaling factors, make sure your pose positions are in [-1, -1, -1] to [1, 1, 1]')
     parser.add_argument('--output_path', type=str, default='./output', help='path to target dataset directory')
@@ -93,8 +93,14 @@ if hparams.pose_storage_format == 'trajectory':
 elif hparams.pose_storage_format == 'frame':
     def load_frame_wise_pose(pose_dir: Path, names: List[Path]):
         poses = np.zeros((len(names), 4, 4))
+        pose_files = [pose_file for pose_file in pose_dir.iterdir() if pose_file.suffix == '.txt']
         for i, name in enumerate(names):
             pose_path = pose_dir / f'{name.stem}.txt'
+            if not pose_path.exists():  # mis-aligned data input, select the nearest frame
+                assert 'depth' in pose_dir.name, 'aligned rgb poses are required'
+                l = np.array([abs(float(pose_file.stem) - float(name.stem)) for pose_file in pose_files])
+                pose_path = pose_files[np.argmin(l)]
+                print(f'{name.stem} estimates to {pose_path.stem}')
             poses[i] = np.loadtxt(pose_path).reshape(4, 4)
         return poses
     rgb_pose_raw = load_frame_wise_pose(basepath / 'rgb', rgb_names)
@@ -195,7 +201,7 @@ def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None
                 image = depthvis
                 cv2.imwrite(os.path.join(split_dir, 'depthvis' + name.split('depth')[1],'{0:06d}.jpg'.format(idx)), depthvis)
                 gt_poses_drb = gt_poses[idx].clone()
-                gt_poses_drb[:, :3] = (gt_poses_drb[:, :3] - origin) / pose_scale_factor
+                gt_poses_drb[:, 3] = (gt_poses_drb[:, 3] - origin) / pose_scale_factor
                 np.savetxt(os.path.join(split_dir, 'pose_gt' + name.split('depth')[1],'{0:06d}.txt'.format(idx)), torch.cat([
                     gt_poses_drb[:, 1:2], -gt_poses_drb[:, :1], gt_poses_drb[:, 2:4]], -1
                 ))
