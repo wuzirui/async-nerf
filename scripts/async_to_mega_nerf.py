@@ -76,8 +76,8 @@ if hparams.sample_rate < 1.0 - 1e-6:
     rgb_samples = sample_data(hparams.sample_rate, rgb_names)
     depth_samples = [sample_data(hparams.sample_rate, depth_names_track) for depth_names_track in depth_names]
 else:
-    rgb_samples = np.arange(0, len(rgb_names) - 1)
-    depth_samples = [np.arange(0, len(depth_names_track) - 1) for depth_names_track in depth_names]
+    rgb_samples = np.arange(0, len(rgb_names))
+    depth_samples = [np.arange(0, len(depth_names_track)) for depth_names_track in depth_names]
 
 rgb_names = np.array(rgb_names)[rgb_samples]
 depth_names = [np.array(depth_names[i])[depth_samples[i]] for i in range(len(depth_names))]
@@ -112,9 +112,10 @@ elif hparams.pose_storage_format == 'frame':
 
 # POSE PREPROCESS
 
+inv_pose = None
 def pose_transform(poses_raw):
+    global inv_pose
     poses = []
-    inv_pose = None
     c2b = np.array([[0, 0, 1, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
     RDF_TO_DRB = torch.FloatTensor([[0, 1, 0],
                                     [1, 0, 0],
@@ -166,8 +167,10 @@ pose_scale_factor = hparams.pose_scale_factor
 
 dirs = [
     mega_path / 'train' / 'rgbs',
+    mega_path / 'train' / 'pose_rgb',
     mega_path / 'train' / 'metadata_rgb', 
     mega_path / 'val' / 'rgbs',
+    mega_path / 'val' / 'pose_rgb',
     mega_path / 'val' / 'metadata_rgb' ] + \
     [(mega_path / 'train' / f'pose_gt_{track}') for track in depth_tracks] + \
     [(mega_path / 'train' / f'depthvis_{track}') for track in depth_tracks] + \
@@ -195,6 +198,9 @@ def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None
                 color = cv2.imread(str(rgb_names[idx]),-1)
                 cv2.imwrite(os.path.join(split_dir,'rgbs','{0:06d}.jpg'.format(idx)),color)
                 image = color
+                np.savetxt(os.path.join(split_dir, 'pose_rgb','{0:06d}.txt'.format(idx)), torch.cat([
+                    camera_in_drb[:, 1:2], -camera_in_drb[:, :1], camera_in_drb[:, 2:4]], -1
+                ))
             else:
                 depthvis_path = depthvis_name[idx]
                 depthvis = np.asarray(Image.open(depthvis_path).convert("L"), dtype=np.float32)

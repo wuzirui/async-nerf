@@ -13,6 +13,7 @@ def _get_opts():
     parser.add_argument('--reference_traj', type=str, help='path to the reference trajectory poses')
     parser.add_argument('--evaluate_traj', type=str, help='path to the trajectory under evaluation')
     parser.add_argument('--allow_misalign', default=False, action='store_true', help='find nearest reference frame when frame timestamps in evaluation traj not found in reference traj')
+    parser.add_argument('--pose_scale_factor', type=float, default=1)
 
     return parser.parse_known_args()[0]
 
@@ -43,9 +44,9 @@ reference_poses = pp.mat2SE3(reference_poses)
 pred_trans = evaluate_poses.translation().to(device)
 pred_rot = evaluate_poses.rotation().to(device)
 gt_SE3 = reference_poses.to(device)
-error_trans_axes = (pred_trans - gt_SE3.translation()).abs().cpu().numpy()
+error_trans_axes = (pred_trans - gt_SE3.translation()).abs().cpu().numpy() * hparams.pose_scale_factor
 error_trans = np.linalg.norm(error_trans_axes, axis=-1)
-theta_rot = (torch.acos(torch.sum(pred_rot * gt_SE3.rotation(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+theta_rot = (torch.acos(torch.sum(pred_rot.tensor() * gt_SE3.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
 error_trans_axes_median = np.median(error_trans_axes, axis=0)
 error_trans_axes_mean = np.mean(error_trans_axes, axis=0)
 error_trans_median = np.median(error_trans, axis=0)

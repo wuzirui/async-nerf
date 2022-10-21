@@ -487,7 +487,7 @@ class Runner:
             if self.pose_correction is not None and self.hparams.have_gt_poses:
                 error_trans_axes = (c2ws.translation() - gt_c2ws.translation()).abs().cpu().numpy() * self.pose_scale_factor
                 error_trans = np.linalg.norm(error_trans_axes, axis=-1)
-                theta_rot = (torch.acos(torch.sum(c2ws.rotation() * gt_c2ws.rotation(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+                theta_rot = (torch.acos(torch.sum(c2ws.rotation().tensor() * gt_c2ws.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
                 error_trans_median = np.median(error_trans, axis=0)
                 error_trans_mean = np.mean(error_trans, axis=0)
                 theta_rot_median = np.median(theta_rot, axis=0)
@@ -735,7 +735,7 @@ class Runner:
                                               get_depth=True,
                                               get_depth_variance=False,
                                               get_bg_fg_rgb=True,
-                                              progress=self.progress,
+                                              progress=1,
                                               )
 
                 with torch.no_grad():
