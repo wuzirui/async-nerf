@@ -26,7 +26,7 @@ class ImageMetadata:
         if gt_pose_path is not None:
             self.gt_pose = np.loadtxt(gt_pose_path).reshape(3, 4)
         else:
-            self.gt_pose = c2w
+            self.gt_pose = c2w.clone()
         self.is_depth = is_depth
     
     def get_gt_pose(self):

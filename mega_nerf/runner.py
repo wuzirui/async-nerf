@@ -345,10 +345,11 @@ class Runner:
                         image_indices = None
 
                     metrics, bg_nerf_rays_present = self._training_step(
-                        item['rgbs'].to(self.device, non_blocking=True) if item['rgbs'] is not None else None,
-                        item['depths'].to(self.device, non_blocking=True) if item['depths'] is not None else None,
-                        item['rays'].to(self.device, non_blocking=True),
-                        image_indices, item['depth_mask'].to(self.device, non_blocking=True),
+                        rgbs=item['rgbs'].to(self.device, non_blocking=True) if item['rgbs'] is not None else None,
+                        depths=item['depths'].to(self.device, non_blocking=True) if item['depths'] is not None else None,
+                        rays=item['rays'].to(self.device, non_blocking=True),
+                        image_indices=image_indices,
+                        depth_masks=item['depth_mask'].to(self.device, non_blocking=True),
                         c2ws=item['c2ws'].to(self.device, non_blocking=True), 
                         gt_c2ws=item['gt_c2ws'].to(self.device, non_blocking=True))
 
@@ -884,6 +885,10 @@ class Runner:
         intrinsics = metadata['intrinsics'] / scale_factor
         assert metadata['W'] % scale_factor == 0
         assert metadata['H'] % scale_factor == 0
+        try:
+            pp.mat2SE3(metadata['c2w'])
+        except all:
+            raise ValueError()
 
         """
         加载对应的 masks 文件夹中的 metadata
