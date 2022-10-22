@@ -5,11 +5,11 @@ coarse_samples: 256
 fine_samples: 512
 batch_size: 256
 no_bg_nerf: True
-lr: 2e-4
+lr: 5e-4
 lr_pose: 4e-4
 
 photo_weight: 1.0
 depth_weight: 1e-3
 sigma_zeroinit: True
 random_seed: 28
-BARF_start: 0.5
+BARF_start: 0.1
