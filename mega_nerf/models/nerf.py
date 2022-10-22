@@ -34,7 +34,7 @@ class Embedding(nn.Module):
             out += [torch.sin(freq * x), torch.cos(freq * x)]
         output = torch.cat(out, -1) # x_dim + 2*x_dim*L
         if not self.BARF: return output
-        alpha = (progress + self.start) / self.end * self.freq_bands.shape[0]
+        alpha = (progress) / self.end * self.freq_bands.shape[0] if progress > self.start else self.freq_bands.shape[0]
         k = torch.arange(self.freq_bands.shape[0], dtype=torch.float32).cuda()
         k = torch.stack([k for i in range(2 * x.shape[1])], 1).view(-1)
         weight = (1 - (alpha - k).clamp_(min=0, max=1).mul_(np.pi).cos_()) / 2 # [L]
