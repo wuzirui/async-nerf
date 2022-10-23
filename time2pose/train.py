@@ -132,7 +132,7 @@ class Runner:
         return cum_metrics    
 
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def _run_validation(self):
         pred_trans, pred_rot = [], []
         gt_SE3 = []
