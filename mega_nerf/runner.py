@@ -379,7 +379,11 @@ class Runner:
 
                 scaler.update()
 
-                for scheduler in schedulers.values():
+                for key, scheduler in schedulers.items():
+                    if key == 'bg_nerf' and (not bg_nerf_rays_present):
+                        continue
+                    elif key =='poses' and self.progress < self.hparams.BARF_start:
+                        continue
                     scheduler.step()
 
                 train_iterations += 1
