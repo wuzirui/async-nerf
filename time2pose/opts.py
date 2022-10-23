@@ -16,6 +16,7 @@ def get_opts_base():
 
     parser.add_argument('--translation_weight', type=float, default=1, help='weight of translation loss')
     parser.add_argument('--rotation_weight', type=float, default=1, help='weight of rotation loss')
+    parser.add_argument('--velocity_weight', type=float, default=1e-3, help='weight of velocity loss')
     parser.add_argument('--rot_loss_type', choices=['mse', 'l1'], default='mse')
     parser.add_argument('--trans_loss_type', choices=['mse', 'l1'], default='mse')
 

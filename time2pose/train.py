@@ -30,7 +30,7 @@ class Runner:
         self.exp_folder = Path(hparams.exp_name)
         if not self.exp_folder.exists():
             os.makedirs(self.exp_folder.absolute())
-        self.exp_name = str(max([int(name.name) for name in self.exp_folder.iterdir()] + [0]) + 1)
+        self.exp_name = str(max([int(name.name) for name in self.exp_folder.iterdir() if str.isdigit(name.name)] + [0]) + 1)
         self.writer = SummaryWriter(self.exp_folder / self.exp_name / 'tb')
         logging.basicConfig(level=logging.DEBUG
                             , format="[%(levelname)s] %(asctime)-9s - %(filename)-8s:%(lineno)s line - %(message)s"
@@ -89,25 +89,27 @@ class Runner:
         cum_metrics = {}
         for batch in self.train_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
+            gt_velocity = batch['velocity'].reshape(-1, 7).to(self.device)
 
             #inference through network
-            predicted_trans, predicted_rot = self.network(timestamps)
+            predicted_trans, predicted_rot, v = self.network(timestamps, train=True)
             metrics = {}
 
             self.optimizer.zero_grad(set_to_none=True)
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
             trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
+            velocity_loss = F.mse_loss(v, gt_velocity, reduce='mean')
             if self.hparams.use_manifold:
                 ratio = min(epoch // (self.hparams.train_epochs // 10), 9) / 9
                 tau = 1 / 20 + ratio * (1 / 4 - 1 / 20)
                 gt_rmat = gt_se3.rotation().matrix()
                 out_rmat = rpmg.RPMG.apply(predicted_rot, tau, self.hparams.manifold_lambda, gt_rmat, self.hparams.rotation_weight)
                 mse_ori = F.mse_loss(out_rmat, gt_rmat, reduction='mean')
-                loss = self.hparams.translation_weight * trans_loss_raw + mse_ori
+                loss = self.hparams.translation_weight * trans_loss_raw + mse_ori + velocity_loss * self.hparams.velocity_weight
                 metrics['manifold loss'] = float(mse_ori)
                 loss.backward()
             else:
-                loss = trans_loss + rot_loss
+                loss = trans_loss + rot_loss + velocity_loss * self.hparams.velocity_weight
                 loss.backward()
 
             self.optimizer.step()
@@ -116,6 +118,7 @@ class Runner:
                 'loss': float(loss),
                 'translation loss': float(trans_loss_raw),
                 'rotation loss': float(rot_loss_raw),
+                'velocity loss': float(velocity_loss),
                 's_x': float(self.adaptive_loss_fn.s_x),
                 's_q': float(self.adaptive_loss_fn.s_q),
             })
@@ -136,7 +139,7 @@ class Runner:
         for batch in self.val_dataset:
             timestamp = batch['timestamp'].to(self.device)
             gt_SE3.append(batch['SE3'])
-            predicted_trans, predicted_rot = self.network(timestamp)
+            predicted_trans, predicted_rot, _ = self.network(timestamp)
             pred_trans.append(predicted_trans)
             pred_rot.append(predicted_rot)
         pred_trans = torch.cat(pred_trans, dim=0).to(self.device)

@@ -53,7 +53,8 @@ class TimePoseFunction(nn.Module):
         self.translation_output = nn.Sequential(nn.Linear(n_channels, 3))
         
         
-    def forward(self, t):
+    def forward(self, t, train=False):
+        if train: t = t.requires_grad_(True)
         emb = self.embedding(t)
         x = emb
         for i, net in enumerate(self.nets):
@@ -63,4 +64,7 @@ class TimePoseFunction(nn.Module):
         rot_raw = self.rotation_output(x)
         rot = rot_raw / torch.linalg.vector_norm(rot_raw, keepdim=True, dim=-1)
         trans = self.translation_output(x)
-        return trans, rot
+        if train:
+            v  = torch.autograd.grad(torch.cat([trans, rot], dim=-1), t, grad_outputs=torch.zeros([len(t), 7]).to(t.device), retain_graph=True)[0]
+        else: v = None
+        return trans, rot, v
