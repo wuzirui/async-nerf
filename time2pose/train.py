@@ -69,7 +69,7 @@ class Runner:
             bar.update(1)
 
             key_alias = {'loss': 'loss', 'rotation loss': 'l_rot', 'translation loss': 'l_trans', \
-                'error_translation_mean': "val/err_trans", 'theta_mean': 'val/theta'}
+                'velocity loss': 'l_velocity', 'error_translation_mean': "val/err_trans", 'theta_mean': 'val/theta'}
             bar.set_postfix({key_alias[key]: value for key, value in result.items() if key in key_alias.keys()})
             if epoch % self.hparams.val_interval == 0:
                 metrics = self._run_validation()
