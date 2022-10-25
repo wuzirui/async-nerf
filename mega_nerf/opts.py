@@ -41,7 +41,7 @@ def get_opts_base():
 
     parser.add_argument('--pos_xyz_dim', type=int, default=12,
                         help='frequency encoding dimension applied to xyz position')
-    parser.add_argument('--pos_dir_dim', type=int, default=12,
+    parser.add_argument('--pos_dir_dim', type=int, default=4,
                         help='frequency encoding dimension applied to view direction (set to 0 to disable)')
     parser.add_argument('--layers', type=int, default=8, help='number of layers in MLP')
     parser.add_argument('--skip_layers', type=int, nargs='+', default=[4], help='indices of the skip connections')
