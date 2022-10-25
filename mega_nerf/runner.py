@@ -489,7 +489,7 @@ class Runner:
         metrics = {}
         with torch.no_grad():
             psnr_ = psnr(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks)
-            depth_variance = results[f'depth_variance_{typ}'].mean()
+            depth_variance_metrics = results[f'depth_variance_{typ}'] * (self.pose_scale_factor ** 2) + 1e-4
             if self.pose_correction is not None and self.hparams.have_gt_poses:
                 error_trans_axes = (c2ws.translation() - gt_c2ws.translation()).abs().cpu().numpy() * self.pose_scale_factor
                 error_trans = np.linalg.norm(error_trans_axes, axis=-1)
@@ -507,7 +507,7 @@ class Runner:
 
         metrics.update({
             'psnr': psnr_,
-            'depth_variance': depth_variance,
+            'depth_variance': depth_variance_metrics.mean(),
         })
 
         photo_loss = F.mse_loss(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks, reduction='mean') * self.hparams.photo_weight
@@ -569,7 +569,6 @@ class Runner:
 
                 with torch.inference_mode(mode=True):
                     results, _ = self.render_image(metadata_item)
-                with torch.inference_mode():
                     typ = 'fine' if 'rgb_fine' in results else 'coarse'
                     viz_result_rgbs = results[f'rgb_{typ}'].view((img_w, img_h, 3)).cpu()
                     if not is_depth:
