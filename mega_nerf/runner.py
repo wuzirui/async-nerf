@@ -4,7 +4,6 @@ from logging import warning
 import math
 import os
 import random
-from readline import insert_text
 import shutil
 import signal
 import sys
@@ -18,6 +17,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import pypose as pp
 from PIL import Image
 from torch.cuda.amp import GradScaler
 from torch.optim import Adam
@@ -33,6 +33,7 @@ from mega_nerf.image_metadata import ImageMetadata
 from mega_nerf.metrics import depth_abs_rel, depth_delta, depth_rmse, depth_rmse_log, depth_sq_rel, psnr, ssim, lpips
 from mega_nerf.misc_utils import main_print, main_tqdm
 from mega_nerf.models.model_utils import get_nerf, get_bg_nerf
+from mega_nerf.models.pose_correction import PoseCorrection
 from mega_nerf.ray_utils import get_rays, get_ray_directions
 from mega_nerf.rendering import render_rays
 
@@ -152,6 +153,7 @@ class Runner:
         # 读取元信息
         self.train_items, self.val_items = self._get_image_metadata()
         main_print('Using {} train images and {} val images'.format(len(self.train_items), len(self.val_items)))
+        main_print(f'{self.n_depth_frames} depth frames in total (train + val).')
 
         """
         重新计算了相机位置的范围, 不知道为什么不重用 params.pt 中的数据
@@ -173,6 +175,14 @@ class Runner:
             self.nerf = torch.nn.parallel.DistributedDataParallel(self.nerf, device_ids=[int(os.environ['LOCAL_RANK'])],
                                                                   output_device=int(os.environ['LOCAL_RANK']))
 
+        if hparams.BARF:
+            self.pose_correction = PoseCorrection(self.n_depth_frames).to(self.device)
+            if 'RANK' in os.environ:
+                self.pose_correction = torch.nn.parallel.DistributedDataParallel(self.pose_correction, device_ids=[int(os.environ['LOCAL_RANK'])],
+                                                                                 output_device=int(os.environ['LOCAL_RANK']))
+        else:
+            self.pose_correction = None
+            
         if hparams.bg_nerf:
             """
             使用前后景分离的方式训练
@@ -235,6 +245,9 @@ class Runner:
         optimizers['nerf'] = Adam(self.nerf.parameters(), lr=self.hparams.lr)
         if self.bg_nerf is not None:
             optimizers['bg_nerf'] = Adam(self.bg_nerf.parameters(), lr=self.hparams.lr)
+
+        if self.hparams.BARF:
+            optimizers['poses'] = Adam(self.pose_correction.parameters(), lr=self.hparams.lr_pose)
 
         if self.hparams.ckpt_path is not None:
             """
@@ -332,10 +345,13 @@ class Runner:
                         image_indices = None
 
                     metrics, bg_nerf_rays_present = self._training_step(
-                        item['rgbs'].to(self.device, non_blocking=True) if item['rgbs'] is not None else None,
-                        item['depths'].to(self.device, non_blocking=True) if item['depths'] is not None else None,
-                        item['rays'].to(self.device, non_blocking=True),
-                        image_indices, item['depth_mask'].to(self.device, non_blocking=True))
+                        rgbs=item['rgbs'].to(self.device, non_blocking=True) if item['rgbs'] is not None else None,
+                        depths=item['depths'].to(self.device, non_blocking=True) if item['depths'] is not None else None,
+                        rays=item['rays'].to(self.device, non_blocking=True),
+                        image_indices=image_indices,
+                        depth_masks=item['depth_mask'].to(self.device, non_blocking=True),
+                        c2ws=item['c2ws'].to(self.device, non_blocking=True), 
+                        gt_c2ws=item['gt_c2ws'].to(self.device, non_blocking=True))
 
                     with torch.no_grad():
                         for key, val in metrics.items():
@@ -356,12 +372,18 @@ class Runner:
                 for key, optimizer in optimizers.items():
                     if key == 'bg_nerf' and (not bg_nerf_rays_present):
                         continue
+                    elif key =='poses' and self.progress < self.hparams.BARF_start:
+                        continue
                     else:
                         scaler.step(optimizer)
 
                 scaler.update()
 
-                for scheduler in schedulers.values():
+                for key, scheduler in schedulers.items():
+                    if key == 'bg_nerf' and (not bg_nerf_rays_present):
+                        continue
+                    elif key =='poses' and self.progress < self.hparams.BARF_start:
+                        continue
                     scheduler.step()
 
                 train_iterations += 1
@@ -440,9 +462,14 @@ class Runner:
             dist.barrier()
         # end _setup_experiment_dir
 
-    def _training_step(self, rgbs: torch.Tensor, depths: torch.Tensor, rays: torch.Tensor, image_indices: Optional[torch.Tensor], depth_masks: torch.BoolTensor) \
+    def _training_step(self, rgbs: torch.Tensor, depths: torch.Tensor, rays: torch.Tensor, image_indices: Optional[torch.Tensor], depth_masks: torch.BoolTensor, c2ws: torch.FloatTensor, gt_c2ws: torch.FloatTensor) \
             -> Tuple[Dict[str, Union[torch.Tensor, float]], bool]:
         self.iter_step += 1
+        if self.pose_correction is not None:
+            rays = self.pose_correction(image_indices, rays, depth_masks)
+            c2ws = self.pose_correction.forward_c2ws(image_indices, c2ws, depth_masks)
+            gt_c2ws = pp.mat2SE3(gt_c2ws.double()).float()
+        self.progress = self.iter_step/self.hparams.train_iterations
         results, bg_nerf_rays_present = render_rays(nerf=self.nerf,
                                                     bg_nerf=self.bg_nerf,
                                                     rays=rays,
@@ -453,22 +480,37 @@ class Runner:
                                                     get_depth=True,
                                                     get_depth_variance=True,
                                                     get_bg_fg_rgb=False,
+                                                    progress=self.progress,
                                                     )
         typ = 'fine' if 'rgb_fine' in results else 'coarse'
         # print(f"rays shape = {rays.shape}, rendered rgb shape = {results[f'rgb_{typ}'].shape}, rendered depth shape = {results[f'depth_{typ}'].shape}")
 
         color_masks = 1 - depth_masks
+        metrics = {}
         with torch.no_grad():
             psnr_ = psnr(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks)
-            depth_variance = results[f'depth_variance_{typ}'].mean()
+            depth_variance_metrics = results[f'depth_variance_{typ}'] * (self.pose_scale_factor ** 2) + 1e-4
+            if self.pose_correction is not None and self.hparams.have_gt_poses:
+                error_trans_axes = (c2ws.translation() - gt_c2ws.translation()).abs().cpu().numpy() * self.pose_scale_factor
+                error_trans = np.linalg.norm(error_trans_axes, axis=-1)
+                theta_rot = (torch.acos(torch.sum(c2ws.rotation().tensor() * gt_c2ws.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+                error_trans_median = np.median(error_trans, axis=0)
+                error_trans_mean = np.mean(error_trans, axis=0)
+                theta_rot_median = np.median(theta_rot, axis=0)
+                theta_rot_mean = np.mean(theta_rot, axis=0)
+                metrics.update({
+                    'rot_mse_mean': theta_rot_mean,
+                    'rot_mse_median': theta_rot_median,
+                    'trans_mse_mean': error_trans_mean,
+                    'trans_mse_median': error_trans_median,
+                })
 
-        metrics = {
+        metrics.update({
             'psnr': psnr_,
-            'depth_variance': depth_variance,
-        }
+            'depth_variance': depth_variance_metrics.mean(),
+        })
 
         photo_loss = F.mse_loss(results[f'rgb_{typ}'] * color_masks, rgbs * color_masks, reduction='mean') * self.hparams.photo_weight
-        extra_loss = 0
 
         depths_metric, render_depth_metric = (depths * self.pose_scale_factor).view(-1), \
             (results[f'depth_{typ}'].reshape(-1, 1) * depth_masks * self.pose_scale_factor).view(-1)
@@ -484,7 +526,8 @@ class Runner:
         depth_loss = F.mse_loss(render_depth_metric, depths_metric, reduction='mean')
         metrics['photo_loss'] = photo_loss
         metrics['depth_mse_loss'] = depth_loss
-        metrics['loss'] = depth_loss * self.hparams.depth_weight + extra_loss + photo_loss
+        depth_weight = self.hparams.depth_weight * self.progress if self.progress >= self.hparams.BARF_start else 0.
+        metrics['loss'] = depth_loss * depth_weight +  photo_loss
         return metrics, bg_nerf_rays_present
 
     def _run_validation(self, train_index: int) -> Dict[str, float]:
@@ -526,7 +569,6 @@ class Runner:
 
                 with torch.inference_mode(mode=True):
                     results, _ = self.render_image(metadata_item)
-                with torch.inference_mode():
                     typ = 'fine' if 'rgb_fine' in results else 'coarse'
                     viz_result_rgbs = results[f'rgb_{typ}'].view((img_w, img_h, 3)).cpu()
                     if not is_depth:
@@ -601,7 +643,7 @@ class Runner:
                         viz_depth = viz_depth.clamp_max(ma)
 
                     img = Runner._create_result_image(viz_image if not is_depth else None, viz_result_rgbs,
-                                                      viz_image if is_depth else None, viz_depth, None, None)
+                                                      viz_image if is_depth else None, viz_depth)
 
 
                     save_path = self.experiment_path / 'valimg' / f'val-{self.iter_step}'
@@ -698,6 +740,7 @@ class Runner:
                                               get_depth=True,
                                               get_depth_variance=False,
                                               get_bg_fg_rgb=True,
+                                              progress=1,
                                               )
 
                 with torch.no_grad():
@@ -710,28 +753,20 @@ class Runner:
                 torch.cuda.empty_cache()
 
             for key, value in results.items():
-                if key in ['gradient_error_coarse', 'gradient_error_fine']:
-                    continue
                 results[key] = torch.cat(value)
 
             return results, rays
 
     @staticmethod
     def _create_result_image(rgbs: torch.Tensor, result_rgbs: torch.Tensor, gt_depth: torch.Tensor
-                            , result_depths: torch.Tensor, gradient: torch.Tensor, weight: torch.Tensor) -> Image:
+                            , result_depths: torch.Tensor) -> Image:
         if gt_depth is not None:
             depth_vis = Runner.visualize_scalars(torch.log(result_depths + 1e-8).view(gt_depth.shape[0], gt_depth.shape[1]).cpu())
             gt_depth_vis = Runner.visualize_scalars(torch.log(gt_depth + 1e-8).view(gt_depth.shape[0], gt_depth.shape[1]).cpu())
         else:
             depth_vis = Runner.visualize_scalars(torch.log(result_depths + 1e-8).view(rgbs.shape[0], rgbs.shape[1]).cpu())
             gt_depth_vis = torch.zeros_like(torch.tensor(depth_vis))
-        if gradient is not None:
-            gradient = gradient.reshape(len(weight), -1, 3)
-            out_normal = gradient * weight[:, : (gradient.shape[1]), None]
-            out_normal = out_normal.sum(dim=1).detach().cpu().numpy().reshape(rgbs.shape) * 255
-            depth = (out_normal, depth_vis)
-        else:
-            depth = (gt_depth_vis, depth_vis)
+        depth = (gt_depth_vis, depth_vis)
         if rgbs is not None:
             images = (rgbs * 255, result_rgbs * 255)
         else:
@@ -777,6 +812,8 @@ class Runner:
         train_paths_depth.sort(key=lambda x: x.name)
         val_paths_set_depth = set(val_paths_depth)
 
+        self.n_depth_frames = len(train_paths_depth)
+
         image_indices = {}
         for i, train_path in enumerate(train_paths_rgb):
             image_indices[train_path.name] = i
@@ -818,6 +855,7 @@ class Runner:
         Return:
             ImageMetadata: 元信息
         """
+        gt_pose_path = None
         if not is_depth:
             image_path = None
             for extension in ['.jpg', '.JPG', '.png', '.PNG']:
@@ -833,7 +871,9 @@ class Runner:
                 if candidate.exists():
                     depth_path = candidate
                     break
+            gt_pose_path = metadata_path.parent.parent / f'pose_gt_{depth_name}' / '{}{}'.format(metadata_path.stem, '.txt')
             assert depth_path is not None, metadata_path.parent.parent / f'depthvis_{depth_name}' / '{}{}'.format(metadata_path.stem, extension)
+            assert not self.hparams.have_gt_poses or gt_pose_path.exists()
             image_path = depth_path
 
         """
@@ -850,6 +890,10 @@ class Runner:
         intrinsics = metadata['intrinsics'] / scale_factor
         assert metadata['W'] % scale_factor == 0
         assert metadata['H'] % scale_factor == 0
+        try:
+            pp.mat2SE3(metadata['c2w'])
+        except all:
+            raise ValueError()
 
         """
         加载对应的 masks 文件夹中的 metadata
@@ -873,7 +917,8 @@ class Runner:
         当在 hparams 中指定 all_val 为真时, 不使用 masks 进行 inference
         """
         return ImageMetadata(image_path, metadata['c2w'] if is_depth else metadata['c2w'], metadata['W'] // scale_factor, metadata['H'] // scale_factor,
-                             intrinsics, image_index, None if (is_val and self.hparams.all_val) else mask_path, is_val, self.pose_scale_factor, is_depth)
+                             intrinsics, image_index, None if (is_val and self.hparams.all_val) else mask_path, is_val, self.pose_scale_factor, is_depth, 
+                             gt_pose_path if self.hparams.have_gt_poses else None)
 
     def _get_experiment_path(self) -> Path:
         """

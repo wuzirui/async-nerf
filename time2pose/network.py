@@ -44,7 +44,7 @@ class TimePoseFunction(nn.Module):
             layer = nn.Sequential(
                 layer, 
                 nn.BatchNorm1d(n_channels),
-                nn.LeakyReLU()
+                nn.Softplus()
             )
             nets.append(layer)
         

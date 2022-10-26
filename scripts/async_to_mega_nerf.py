@@ -19,6 +19,7 @@ def _get_opts():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='path to source dataset directory')
     parser.add_argument('--depth_tracks', type=str, nargs='+', required=True, help='list of depth track names, e.g you have two depth tracks in depth_aligned/ and depth_offset/, then put "aligned offset" in this argument')
+    parser.add_argument('--pose_input_dirs', type=str, nargs='+', required=False, default=None, help='input pose sequences (possibly the inaccurate or misaligned values) for depth tracks')
     parser.add_argument('--intrinsics', type=float, nargs=4, required=True, help='instrinsic tuple (fx, fy, sx, sy)')
     parser.add_argument('--pose_scale_factor', type=int, help='pose scaling factors, make sure your pose positions are in [-1, -1, -1] to [1, 1, 1]')
     parser.add_argument('--output_path', type=str, default='./output', help='path to target dataset directory')
@@ -75,8 +76,8 @@ if hparams.sample_rate < 1.0 - 1e-6:
     rgb_samples = sample_data(hparams.sample_rate, rgb_names)
     depth_samples = [sample_data(hparams.sample_rate, depth_names_track) for depth_names_track in depth_names]
 else:
-    rgb_samples = np.arange(0, len(rgb_names) - 1)
-    depth_samples = [np.arange(0, len(depth_names_track) - 1) for depth_names_track in depth_names]
+    rgb_samples = np.arange(0, len(rgb_names))
+    depth_samples = [np.arange(0, len(depth_names_track)) for depth_names_track in depth_names]
 
 rgb_names = np.array(rgb_names)[rgb_samples]
 depth_names = [np.array(depth_names[i])[depth_samples[i]] for i in range(len(depth_names))]
@@ -92,18 +93,29 @@ if hparams.pose_storage_format == 'trajectory':
 elif hparams.pose_storage_format == 'frame':
     def load_frame_wise_pose(pose_dir: Path, names: List[Path]):
         poses = np.zeros((len(names), 4, 4))
+        pose_files = [pose_file for pose_file in pose_dir.iterdir() if pose_file.suffix == '.txt']
         for i, name in enumerate(names):
             pose_path = pose_dir / f'{name.stem}.txt'
+            if not pose_path.exists():  # mis-aligned data input, select the nearest frame
+                assert 'depth' in pose_dir.name, 'aligned rgb poses are required'
+                l = np.array([abs(float(pose_file.stem) - float(name.stem)) for pose_file in pose_files])
+                pose_path = pose_files[np.argmin(l)]
+                print(f'{name.stem} estimates to {pose_path.stem}')
             poses[i] = np.loadtxt(pose_path).reshape(4, 4)
         return poses
     rgb_pose_raw = load_frame_wise_pose(basepath / 'rgb', rgb_names)
-    depth_pose_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
+    if hparams.pose_input_dirs is not None:
+        depth_pose_raw = [load_frame_wise_pose(Path(hparams.pose_input_dirs[i]), depth_names[i]) for i, track in enumerate(depth_tracks)]
+    else:
+        depth_pose_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
+    depth_pose_gt_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
 
 # POSE PREPROCESS
 
+inv_pose = None
 def pose_transform(poses_raw):
+    global inv_pose
     poses = []
-    inv_pose = None
     c2b = np.array([[0, 0, 1, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
     RDF_TO_DRB = torch.FloatTensor([[0, 1, 0],
                                     [1, 0, 0],
@@ -129,6 +141,7 @@ def pose_transform(poses_raw):
 rgb_pose = pose_transform(rgb_pose_raw)
 rgb_positions = torch.cat([c2w[:3, 3].unsqueeze(0) for c2w in rgb_pose])
 depth_pose = [pose_transform(depth_pose_raw_track) for depth_pose_raw_track in depth_pose_raw]
+depth_pose_gt = [pose_transform(depth_pose_raw_track) for depth_pose_raw_track in depth_pose_gt_raw]
 depth_positions = [torch.cat([c2w[:3, 3].unsqueeze(0) for c2w in depth_pose_track]) for depth_pose_track in depth_pose]
 
 max_values = rgb_positions.max(0)[0]
@@ -154,13 +167,15 @@ pose_scale_factor = hparams.pose_scale_factor
 
 dirs = [
     mega_path / 'train' / 'rgbs',
+    mega_path / 'train' / 'pose_rgb',
     mega_path / 'train' / 'metadata_rgb', 
     mega_path / 'val' / 'rgbs',
+    mega_path / 'val' / 'pose_rgb',
     mega_path / 'val' / 'metadata_rgb' ] + \
-    [(mega_path / 'train' / f'depth_{track}') for track in depth_tracks] + \
+    [(mega_path / 'train' / f'pose_gt_{track}') for track in depth_tracks] + \
     [(mega_path / 'train' / f'depthvis_{track}') for track in depth_tracks] + \
     [(mega_path / 'train' / f'metadata_depth_{track}') for track in depth_tracks] + \
-    [(mega_path / 'val' / f'depth_{track}') for track in depth_tracks] + \
+    [(mega_path / 'val' / f'pose_gt_{track}') for track in depth_tracks] + \
     [(mega_path / 'val' / f'depthvis_{track}') for track in depth_tracks] + \
     [(mega_path / 'val' / f'metadata_depth_{track}') for track in depth_tracks]
 
@@ -168,7 +183,7 @@ for dir in dirs:
     if not dir.exists():
         dir.mkdir(parents=True)
 
-def save_track(name, poses, positions, image_names, depthvis_name):
+def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None):
     with open(os.path.join(mega_path, f'mappings_{name}.txt'),mode='w') as f:
         for idx, _ in enumerate(tqdm(image_names)):
             if idx % int(positions.shape[0] / num_val) == 0:
@@ -176,23 +191,27 @@ def save_track(name, poses, positions, image_names, depthvis_name):
             else:
                 split_dir = os.path.join(mega_path,"train")
             
+            camera_in_drb = poses[idx].clone() #这个操作会改变原来的
+            camera_in_drb[:, 3] = (camera_in_drb[:, 3] - origin) / pose_scale_factor
+
             if name == 'rgb':
                 color = cv2.imread(str(rgb_names[idx]),-1)
                 cv2.imwrite(os.path.join(split_dir,'rgbs','{0:06d}.jpg'.format(idx)),color)
                 image = color
+                np.savetxt(os.path.join(split_dir, 'pose_rgb','{0:06d}.txt'.format(idx)), torch.cat([
+                    camera_in_drb[:, 1:2], -camera_in_drb[:, :1], camera_in_drb[:, 2:4]], -1
+                ))
             else:
                 depthvis_path = depthvis_name[idx]
                 depthvis = np.asarray(Image.open(depthvis_path).convert("L"), dtype=np.float32)
+                image = depthvis
                 cv2.imwrite(os.path.join(split_dir, 'depthvis' + name.split('depth')[1],'{0:06d}.jpg'.format(idx)), depthvis)
+                gt_poses_drb = gt_poses[idx].clone()
+                gt_poses_drb[:, 3] = (gt_poses_drb[:, 3] - origin) / pose_scale_factor
+                np.savetxt(os.path.join(split_dir, 'pose_gt' + name.split('depth')[1],'{0:06d}.txt'.format(idx)), torch.cat([
+                    gt_poses_drb[:, 1:2], -gt_poses_drb[:, :1], gt_poses_drb[:, 2:4]], -1
+                ))
 
-                depth_path = image_names[idx]
-                depth, scale = pfm_utils.read_pfm(depth_path)
-                depth = np.flip(depth, axis=0)
-                pfm_utils.write_pfm(os.path.join(split_dir, name, '{0:06d}.pfm'.format(idx)), depth, scale)
-                image = depth
-
-            camera_in_drb = poses[idx].clone() #这个操作会改变原来的
-            camera_in_drb[:, 3] = (camera_in_drb[:, 3] - origin) / pose_scale_factor
 
             assert np.logical_and(camera_in_drb >= -1, camera_in_drb <= 1).all()
             metadata_name = '{0:06d}.pt'.format(idx)
@@ -213,7 +232,7 @@ def save_track(name, poses, positions, image_names, depthvis_name):
 print("exporting rgb data")
 save_track('rgb', rgb_pose, rgb_positions, rgb_names, None)
 print("exporting depth data")
-[save_track(f"depth_{track}", depth_pose[i], depth_positions[i], depth_names[i], depthvis_names[i]) for i, track in enumerate(tqdm(depth_tracks))]
+[save_track(f"depth_{track}", depth_pose[i], depth_positions[i], depth_names[i], depthvis_names[i], depth_pose_gt[i]) for i, track in enumerate(tqdm(depth_tracks))]
 
 coordinates = {
     'origin_drb': origin,

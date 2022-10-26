@@ -13,7 +13,7 @@ import re
 
 class ImageMetadata:
     def __init__(self, image_path: Path, c2w: torch.Tensor, W: int, H: int, intrinsics: torch.Tensor, image_index: int,
-                 mask_path: Optional[Path], is_val: bool, pose_scale_factor, is_depth: bool):
+                 mask_path: Optional[Path], is_val: bool, pose_scale_factor, is_depth: bool, gt_pose_path: Optional[Path]):
         self.image_path = image_path
         self.c2w = c2w
         self.W = W
@@ -23,7 +23,14 @@ class ImageMetadata:
         self._mask_path = mask_path
         self.is_val = is_val
         self.pose_scale_factor = pose_scale_factor
+        if gt_pose_path is not None:
+            self.gt_pose = np.loadtxt(gt_pose_path).reshape(3, 4)
+        else:
+            self.gt_pose = c2w.clone()
         self.is_depth = is_depth
+    
+    def get_gt_pose(self):
+        return self.gt_pose
     
     def is_depth_frame(self) -> bool:
         return self.is_depth
@@ -58,11 +65,12 @@ class ImageMetadata:
         """
         depths = Image.open(self.image_path).convert("L")
         depths = np.asarray(depths, dtype=np.float32)
-        depths[depths > 150] = 150
+        depths[depths > 300] = 300
         depths /= self.pose_scale_factor
         depths = np.ascontiguousarray(depths)
         if depths.shape[1] != self.W or depths.shape[0] != self.H:
             depths = cv2.resize(depths, (self.W, self.H), interpolation=cv2.INTER_LANCZOS4)
+        depths[depths < 0] = 0
         
         return torch.tensor(depths, dtype=torch.float32)
 
