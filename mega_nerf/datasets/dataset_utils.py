@@ -45,7 +45,7 @@ def get_rgbd_index_mask(metadata: ImageMetadata) -> Optional[
         keep_mask[:, metadata.W // 2:] = False
 
     if keep_mask is not None:
-        if keep_mask[keep_mask == True].shape[0] == 0:
+        if keep_mask[keep_mask == True].shape[0] == 0:      # return none if no pixel is governed by this centroid
             return None
 
         keep_mask = keep_mask.view(-1)
