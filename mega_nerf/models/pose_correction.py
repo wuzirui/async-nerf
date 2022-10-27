@@ -21,3 +21,7 @@ class PoseCorrection(nn.Module):
         c2ws_pp = pp.mat2SE3(c2ws.double()).float()     # weird problem of pypose
         ret = correction * c2ws_pp
         return ret
+    
+    def forward_c2w(self, image_index, c2w):
+        correction = pp.SE3(self.correction_dict[image_index])
+        return correction * pp.mat2SE3(c2w.double()).float()

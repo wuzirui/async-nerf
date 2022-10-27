@@ -632,6 +632,16 @@ class Runner:
 
                             val_metrics[key] += value
 
+                        metric_key = 'val_pose/rotation/{}'.format(i)
+                        if self.writer is not None:
+                            self.writer.add_scalar(metric_key, results['rot_mse'], train_index)
+                        val_metrics['val/rotation'] += results['rot_mse']
+
+                        metric_key = 'val_pose/translation/{}'.format(i)
+                        if self.writer is not None:
+                            self.writer.add_scalar(metric_key, results['trans_mse'], train_index)
+                        val_metrics['val/translation'] += results['trans_mse']
+
                     viz_result_rgbs = viz_result_rgbs.view(viz_image.shape[0], viz_image.shape[1], 3).cpu()
                     viz_depth = results[f'depth_{typ}']
                     if f'fg_depth_{typ}' in results:
@@ -666,11 +676,11 @@ class Runner:
                         img = Image.open(str(image_file))
                         self.writer.add_image('val/{}'.format(image_file.stem), T.ToTensor()(img), train_index)
 
-                    for key in val_metrics:
-                        avg_val = val_metrics[key] / len(self.val_items)
-                        self.writer.add_scalar('{}/avg'.format(key), avg_val, 0)
 
                 dist.barrier()
+            for key in val_metrics:
+                avg_val = val_metrics[key] / len(self.val_items)
+                self.writer.add_scalar('{}/avg'.format(key), avg_val, 0)
 
             self.nerf.train()
         finally:
@@ -712,7 +722,19 @@ class Runner:
                                             self.device)
 
         with torch.cuda.amp.autocast(enabled=self.hparams.amp):
-            rays = get_rays(directions, metadata.c2w.to(self.device), self.near, self.far, self.ray_altitude_range)
+            c2w = metadata.c2w.to(self.device)
+            gt_c2w = metadata.gt_pose.to(self.device)
+            c2w = self.pose_correction.forward_c2w(metadata.image_index, c2w)
+            gt_c2w = pp.mat2SE3(gt_c2w.double()).float()
+            if self.pose_correction is not None and self.hparams.have_gt_poses:
+                error_trans_axes = (c2w.translation() - gt_c2w.translation()).abs().cpu().numpy() * self.pose_scale_factor
+                error_trans = np.linalg.norm(error_trans_axes)
+                theta_rot = (torch.acos(torch.sum(c2w.rotation().tensor() * gt_c2w.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+                metrics = {
+                    'rot_mse': theta_rot,
+                    'trans_mse': error_trans,
+                }
+            rays = get_rays(directions, c2w.matrix(), self.near, self.far, self.ray_altitude_range)
 
             rays = rays.view(-1, 8).to(self.device, non_blocking=True)  # (H*W, 8)
             image_indices = metadata.image_index * torch.ones(rays.shape[0], device=rays.device) \
@@ -749,7 +771,13 @@ class Runner:
                             results[key] = []
 
                         results[key].append(value.cpu())
+                    for key, value in metrics.items():
+                        if key not in results:
+                            results[key] = []
+
+                        results[key].append(value.cpu())
                 del result_batch
+                del metrics
                 torch.cuda.empty_cache()
 
             for key, value in results.items():
