@@ -13,4 +13,3 @@ have_gt_poses: True
 
 no_bg_nerf: True
 appearance_dim: 0
-layer_dim: 2048
