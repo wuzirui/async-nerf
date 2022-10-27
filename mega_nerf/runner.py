@@ -734,7 +734,7 @@ class Runner:
                     'rot_mse': theta_rot,
                     'trans_mse': error_trans,
                 }
-            rays = get_rays(directions, c2w.matrix(), self.near, self.far, self.ray_altitude_range)
+            rays = get_rays(directions, c2w.matrix()[:3, :], self.near, self.far, self.ray_altitude_range)
 
             rays = rays.view(-1, 8).to(self.device, non_blocking=True)  # (H*W, 8)
             image_indices = metadata.image_index * torch.ones(rays.shape[0], device=rays.device) \
@@ -771,17 +771,14 @@ class Runner:
                             results[key] = []
 
                         results[key].append(value.cpu())
-                    for key, value in metrics.items():
-                        if key not in results:
-                            results[key] = []
-
-                        results[key].append(value.cpu())
                 del result_batch
-                del metrics
                 torch.cuda.empty_cache()
 
             for key, value in results.items():
                 results[key] = torch.cat(value)
+
+            for key, value in metrics.items():
+                results[key] = torch.tensor(value)
 
             return results, rays
 

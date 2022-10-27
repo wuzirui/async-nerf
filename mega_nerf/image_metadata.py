@@ -24,7 +24,7 @@ class ImageMetadata:
         self.is_val = is_val
         self.pose_scale_factor = pose_scale_factor
         if gt_pose_path is not None:
-            self.gt_pose = np.loadtxt(gt_pose_path).reshape(3, 4)
+            self.gt_pose = torch.tensor(np.loadtxt(gt_pose_path).reshape(3, 4))
         else:
             self.gt_pose = c2w.clone()
         self.is_depth = is_depth
