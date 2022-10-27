@@ -727,9 +727,13 @@ class Runner:
         with torch.cuda.amp.autocast(enabled=self.hparams.amp):
             c2w = metadata.c2w.to(self.device)
             gt_c2w = metadata.gt_pose.to(self.device)
-            c2w = self.pose_correction.forward_c2w(metadata.image_index, c2w)
+            if self.pose_correction is not None:
+                c2w = self.pose_correction.forward_c2w(metadata.image_index, c2w)
+            else:
+                c2w = pp.mat2SE3(c2w.double()).float()
             gt_c2w = pp.mat2SE3(gt_c2w.double()).float()
-            if self.pose_correction is not None and self.hparams.have_gt_poses:
+            metrics = {}
+            if self.hparams.have_gt_poses:
                 error_trans_axes = (c2w.translation() - gt_c2w.translation()).abs().cpu().numpy() * self.pose_scale_factor
                 error_trans = np.linalg.norm(error_trans_axes)
                 theta_rot = (torch.acos(torch.sum(c2w.rotation().tensor() * gt_c2w.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
