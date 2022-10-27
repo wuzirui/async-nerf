@@ -702,6 +702,9 @@ class Runner:
             'dataset_index': dataset_index
         }
 
+        if self.pose_correction is not None:
+            dict['pose_correction_state_dict'] = self.pose_correction.state_dict()
+
         if dataset_state is not None:
             dict['dataset_state'] = dataset_state
 
