@@ -52,13 +52,10 @@ depth_tracks = hparams.depth_tracks
 
 rgb_names = [x for x in Path(basepath / 'rgb').iterdir() if x.suffix == '.jpg']
 rgb_names = sorted(rgb_names, key= lambda x: float(x.stem))
-depth_names = [[x for x in Path(basepath / f'depth_{track}').iterdir() if x.suffix == '.pfm'] for track in depth_tracks]
-depth_names = [sorted(track, key= lambda x: float(x.stem)) for track in depth_names]
 depthvis_names = [[x for x in Path(basepath / f'depthvis_{track}').iterdir() if x.suffix == '.jpg'] for track in depth_tracks]
 depthvis_names = [sorted(track, key= lambda x: float(x.stem)) for track in depthvis_names]
-assert len(depth_names) == len(depthvis_names)
 
-print(f'found {len(rgb_names)} rgb images, {[len(track) for track in depth_names]} depth images in {basepath}')
+print(f'found {len(rgb_names)} rgb images, {[len(track) for track in depthvis_names]} depth images in {basepath}')
 assert len(rgb_names) > 0, "No image found"
 
 # SAMPLE DATA
@@ -74,15 +71,14 @@ def sample_data(rate: float, names: list) -> list:
 
 if hparams.sample_rate < 1.0 - 1e-6:
     rgb_samples = sample_data(hparams.sample_rate, rgb_names)
-    depth_samples = [sample_data(hparams.sample_rate, depth_names_track) for depth_names_track in depth_names]
+    depth_samples = [sample_data(hparams.sample_rate, depth_names_track) for depth_names_track in depthvis_names]
 else:
     rgb_samples = np.arange(0, len(rgb_names))
-    depth_samples = [np.arange(0, len(depth_names_track)) for depth_names_track in depth_names]
+    depth_samples = [np.arange(0, len(depth_names_track)) for depth_names_track in depthvis_names]
 
 rgb_names = np.array(rgb_names)[rgb_samples]
-depth_names = [np.array(depth_names[i])[depth_samples[i]] for i in range(len(depth_names))]
 depthvis_names = [np.array(depthvis_names[i])[depth_samples[i]] for i in range(len(depthvis_names))]
-n_rgb, n_depth = len(rgb_names), [len(depth_names_track) for depth_names_track in depth_names]
+n_rgb, n_depth = len(rgb_names), [len(depth_names_track) for depth_names_track in depthvis_names]
 n_samples = [n_rgb + n for n in n_depth]
 
 # READ POSE
@@ -105,10 +101,10 @@ elif hparams.pose_storage_format == 'frame':
         return poses
     rgb_pose_raw = load_frame_wise_pose(basepath / 'rgb', rgb_names)
     if hparams.pose_input_dirs is not None:
-        depth_pose_raw = [load_frame_wise_pose(Path(hparams.pose_input_dirs[i]), depth_names[i]) for i, track in enumerate(depth_tracks)]
+        depth_pose_raw = [load_frame_wise_pose(Path(hparams.pose_input_dirs[i]), depthvis_names[i]) for i, track in enumerate(depth_tracks)]
     else:
-        depth_pose_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
-    depth_pose_gt_raw = [load_frame_wise_pose(basepath / f'depth_{track}', depth_names[i]) for i, track in enumerate(depth_tracks)]
+        depth_pose_raw = [load_frame_wise_pose(basepath / f'depthvis_{track}', depthvis_names[i]) for i, track in enumerate(depth_tracks)]
+    depth_pose_gt_raw = [load_frame_wise_pose(basepath / f'depthvis_{track}', depthvis_names[i]) for i, track in enumerate(depth_tracks)]
 
 # POSE PREPROCESS
 
@@ -183,7 +179,7 @@ for dir in dirs:
     if not dir.exists():
         dir.mkdir(parents=True)
 
-def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None):
+def save_track(name, poses, positions, image_names, gt_poses=None):
     with open(os.path.join(mega_path, f'mappings_{name}.txt'),mode='w') as f:
         for idx, _ in enumerate(tqdm(image_names)):
             if idx % int(positions.shape[0] / num_val) == 0:
@@ -202,7 +198,7 @@ def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None
                     camera_in_drb[:, 1:2], -camera_in_drb[:, :1], camera_in_drb[:, 2:4]], -1
                 ))
             else:
-                depthvis_path = depthvis_name[idx]
+                depthvis_path = image_names[idx]
                 depthvis = np.asarray(Image.open(depthvis_path).convert("L"), dtype=np.float32)
                 image = depthvis
                 cv2.imwrite(os.path.join(split_dir, 'depthvis' + name.split('depth')[1],'{0:06d}.jpg'.format(idx)), depthvis)
@@ -226,13 +222,13 @@ def save_track(name, poses, positions, image_names, depthvis_name, gt_poses=None
                 'distortion': torch.FloatTensor(distortion),
                 'timestamp': torch.tensor(float(image_names[idx].stem),dtype=torch.float64)
             }, os.path.join(split_dir,f'metadata_{name}',metadata_name))
-            f.write('{},{}\n'.format(('{0:06d}.jpg' if name == 'rgb' else '{0:06d}.pfm').format(idx), metadata_name))
+            f.write('{},{}\n'.format(('{0:06d}.jpg' if name == 'rgb' else '{0:06d}.jpg').format(idx), metadata_name))
     return
 
 print("exporting rgb data")
-save_track('rgb', rgb_pose, rgb_positions, rgb_names, None)
+save_track('rgb', rgb_pose, rgb_positions, rgb_names)
 print("exporting depth data")
-[save_track(f"depth_{track}", depth_pose[i], depth_positions[i], depth_names[i], depthvis_names[i], depth_pose_gt[i]) for i, track in enumerate(tqdm(depth_tracks))]
+[save_track(f"depth_{track}", depth_pose[i], depth_positions[i], depthvis_names[i], depth_pose_gt[i]) for i, track in enumerate(tqdm(depth_tracks))]
 
 coordinates = {
     'origin_drb': origin,

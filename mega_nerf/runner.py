@@ -396,7 +396,7 @@ class Runner:
                         self._save_checkpoint(optimizers, scaler, train_iterations, dataset_index,
                                               dataset.get_state() if self.hparams.dataset_type == 'filesystem' else None)
 
-                if train_iterations > 0 and train_iterations % self.hparams.val_interval == 0:
+                if train_iterations % self.hparams.val_interval == 0:
                     self._run_validation(train_iterations)
 
                 if train_iterations >= self.hparams.train_iterations:
@@ -727,7 +727,7 @@ class Runner:
         with torch.cuda.amp.autocast(enabled=self.hparams.amp):
             c2w = metadata.c2w.to(self.device)
             gt_c2w = metadata.gt_pose.to(self.device)
-            if self.pose_correction is not None:
+            if self.pose_correction is not None and metadata.is_depth:
                 c2w = self.pose_correction.forward_c2w(metadata.image_index, c2w)
             else:
                 c2w = pp.mat2SE3(c2w.double()).float()
