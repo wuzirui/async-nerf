@@ -393,7 +393,7 @@ def _inference(results: Dict[str, torch.Tensor],
         for i in range(0, B, hparams.model_chunk_size):
             xyz_chunk = xyz_[i:i + hparams.model_chunk_size]
 
-            if image_indices is not None:
+            if hparams.appearance_dim > 0:
                 xyz_chunk = torch.cat([xyz_chunk,
                                        rays_d_[i:i + hparams.model_chunk_size],
                                        image_indices_[i:i + hparams.model_chunk_size]], 1)

@@ -339,10 +339,7 @@ class Runner:
                 discard_index = -1
 
                 with torch.cuda.amp.autocast(enabled=self.hparams.amp):
-                    if self.hparams.appearance_dim > 0:
-                        image_indices = item['img_indices'].to(self.device, non_blocking=True)
-                    else:
-                        image_indices = None
+                    image_indices = item['img_indices'].to(self.device, non_blocking=True)
 
                     metrics, bg_nerf_rays_present = self._training_step(
                         rgbs=item['rgbs'].to(self.device, non_blocking=True) if item['rgbs'] is not None else None,

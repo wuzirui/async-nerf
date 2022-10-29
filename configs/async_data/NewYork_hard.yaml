@@ -12,5 +12,5 @@ photo_weight: 1.0
 depth_weight: 1e-3
 sigma_zeroinit: True
 random_seed: 28
-BARF_start: 0.1
+BARF_start: 0.01
 have_gt_poses: True
