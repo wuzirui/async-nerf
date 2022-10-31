@@ -33,7 +33,7 @@ class TimePoseFunction(nn.Module):
         n_channels = hparams.n_channels
         self.skip = hparams.skip_connections
         self.embedding = Embedding(num_freqs=hparams.t_embedding_freq)
-        self.input_dir = self.embedding.get_out_channels(d_in=1)
+        self.input_dir = self.embedding.get_out_channels(d_in=7)
         for i in range(hparams.n_layers):
             if i == 0:
                 layer = nn.Linear(self.input_dir, n_channels)
@@ -49,11 +49,14 @@ class TimePoseFunction(nn.Module):
             nets.append(layer)
         
         self.nets= nn.ModuleList(nets)
-        self.rotation_output = nn.Sequential(nn.Linear(n_channels, 4), nn.Softplus())
+        self.rotation_output = nn.Sequential(nn.Linear(n_channels, 4))
         self.translation_output = nn.Sequential(nn.Linear(n_channels, 3))
         
         
-    def forward(self, t):
+    def forward(self, t, train=False):
+        t = t.expand([len(t), 7])
+        if train:
+            t = t.requires_grad_(True)
         emb = self.embedding(t)
         x = emb
         for i, net in enumerate(self.nets):
@@ -63,4 +66,11 @@ class TimePoseFunction(nn.Module):
         rot_raw = self.rotation_output(x)
         rot = rot_raw / torch.linalg.vector_norm(rot_raw, keepdim=True, dim=-1)
         trans = self.translation_output(x)
-        return trans, rot
+        se3 = torch.cat([trans, rot], dim=-1)
+        if train:
+            v  = torch.autograd.grad(se3, t,
+                                     grad_outputs=torch.ones([len(t), 7]).to(t.device),
+                                     retain_graph=True,
+                                     create_graph=True)[0]
+        else: v = None
+        return trans, rot, v
