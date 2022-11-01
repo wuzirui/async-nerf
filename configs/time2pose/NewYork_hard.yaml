@@ -3,3 +3,4 @@ pose_scale_factor: 1
 n_val: 10
 val_interval: 200
 velocity_weight: 1
+use_manifold: True

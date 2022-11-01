@@ -1,0 +1,8 @@
+n_layers: 9
+n_channels: 1024
+pose_scale_factor: 1
+n_val: 100
+val_interval: 200
+velocity_weight: 0.5
+use_manifold: True
+start_timestamp: 1667117650

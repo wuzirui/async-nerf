@@ -453,6 +453,7 @@ def _inference(results: Dict[str, torch.Tensor],
     results[f'raw_sigma_{typ}'] = sigmas
     if composite_rgb:
         results[f'rgb_{typ}'] = (weights.unsqueeze(-1) * rgbs).sum(dim=1)  # n1 n2 c -> n1 c
+        results[f'raw_rgb_{typ}'] = rgbs
     else:
         results[f'raw_rgb_{typ}'] = rgbs
         if depth_real is not None:

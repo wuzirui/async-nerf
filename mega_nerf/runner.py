@@ -393,7 +393,7 @@ class Runner:
                         self._save_checkpoint(optimizers, scaler, train_iterations, dataset_index,
                                               dataset.get_state() if self.hparams.dataset_type == 'filesystem' else None)
 
-                if train_iterations % self.hparams.val_interval == 0:
+                if train_iterations % self.hparams.val_interval == 1:
                     self._run_validation(train_iterations)
 
                 if train_iterations >= self.hparams.train_iterations:
