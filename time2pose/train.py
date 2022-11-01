@@ -185,7 +185,7 @@ class Runner:
         os.makedirs(output_dir.absolute(), exist_ok=True)
         for batch in self.test_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
-            out_x, out_q = self.network(timestamps)
+            out_x, out_q, _ = self.network(timestamps)
             out_mat = pp.SE3(torch.cat([out_x, out_q], dim=-1)).matrix()
             for i in range(len(timestamps)):
                 ts = float(timestamps[i]) + self.hparams.start_timestamp
