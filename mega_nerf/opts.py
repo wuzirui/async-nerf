@@ -96,7 +96,7 @@ def get_opts_base():
 
     parser.add_argument('--no_resume_ckpt_state', dest='resume_ckpt_state', default=True, action='store_false')
 
-    parser.add_argument('--no_amp', dest='amp', default=True, action='store_false')
+    parser.add_argument('--amp', dest='amp', default=False, action='store_true')
     parser.add_argument('--detect_anomalies', default=False, action='store_true')
     parser.add_argument('--random_seed', type=int, default=42)
 
