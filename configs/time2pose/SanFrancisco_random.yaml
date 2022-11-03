@@ -1,9 +1,11 @@
-n_layers: 9
-n_channels: 1024
+n_layers: 5
+n_channels: 256
 pose_scale_factor: 1
-n_val: 300
+n_val: 30
 val_interval: 200
-velocity_weight: 1
+translation_weight: 2
+rotation_weight: 1e-3
+velocity_weight: 0
 use_manifold: True
 random_seed: 3407
 start_timestamp: 1667093748

@@ -59,6 +59,7 @@ class Runner:
         params.append({"params": self.network.parameters()})
         params.append({"params": self.adaptive_loss_fn.parameters()})
         self.optimizer = torch.optim.Adam(params=params, lr=self.hparams.lr)
+        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.98)
     
     def run(self):
         self.logger.info(self.hparams)
@@ -98,7 +99,10 @@ class Runner:
             self.optimizer.zero_grad(set_to_none=True)
             gt_se3 = batch['SE3'].reshape(-1, 7).to(self.device)
             trans_loss, rot_loss, trans_loss_raw, rot_loss_raw = self.adaptive_loss_fn(torch.cat([predicted_trans, predicted_rot], dim=-1), gt_se3)
-            velocity_loss = F.mse_loss(v, gt_velocity, reduce='mean')
+            if self.hparams.velocity_weight > 0:
+                velocity_loss = F.mse_loss(v, gt_velocity, reduce='mean')
+            else:
+                velocity_loss = 0
             if self.hparams.use_manifold:
                 ratio = min(epoch // (self.hparams.train_epochs // 10), 9) / 9
                 tau = 1 / 20 + ratio * (1 / 4 - 1 / 20)
