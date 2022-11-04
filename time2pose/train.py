@@ -60,6 +60,9 @@ class Runner:
         params.append({"params": self.adaptive_loss_fn.parameters()})
         self.optimizer = torch.optim.Adam(params=params, lr=self.hparams.lr)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.98)
+        if self.hparams.ckpt_path is not None:
+            self.network.load_state_dict(torch.load(self.hparams.ckpt_path))
+            print('loaded checkpoint from previous runs')
     
     def run(self):
         self.logger.info(self.hparams)

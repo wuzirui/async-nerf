@@ -30,6 +30,7 @@ def get_opts_base():
     parser.add_argument('--train_epochs', type=int, default=100000)
     parser.add_argument('--val_interval', type=int, default=1000)
     parser.add_argument('--ckpt_interval', type=int, default=1000, help='save checkpoints and run evaluation if test timestamps available')
+    parser.add_argument('--ckpt_path', type=str, default=None, help='path to checkpoint pth file')
 
     parser.add_argument('--use_manifold', default=False, action='store_true', help='use manifold optimization on rotation learning')
     parser.add_argument('--manifold_lambda', default=0.01, type=float, help='lambda value, please refer to the original paper')
