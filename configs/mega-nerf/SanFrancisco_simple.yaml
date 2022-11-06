@@ -4,14 +4,11 @@ ckpt_interval: 10000
 coarse_samples: 256
 fine_samples: 512
 batch_size: 256
-no_bg_nerf: True
 lr: 5e-4
-lr_pose: 4e-5
 
-BARF: True
-BARF_start: 0.1
 photo_weight: 1.0
-depth_weight: 1e-3
-sigma_zeroinit: True
+depth_weight: 0
+sigma_zeroinit: False
 random_seed: 28
+BARF: False
 have_gt_poses: True

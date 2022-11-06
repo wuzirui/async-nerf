@@ -249,12 +249,14 @@ class Runner:
         if self.hparams.BARF:
             optimizers['poses'] = Adam(self.pose_correction.parameters(), lr=self.hparams.lr_pose)
 
+        self.iter_step = -1
         if self.hparams.ckpt_path is not None:
             """
             从 checkpoint 恢复模型参数
             """
             checkpoint = torch.load(self.hparams.ckpt_path, map_location='cpu')
             train_iterations = checkpoint['iteration']
+            self.iter_step = train_iterations
 
             scaler_dict = scaler.state_dict()
             scaler_dict.update(checkpoint['scaler'])
@@ -262,6 +264,8 @@ class Runner:
 
             for key, optimizer in optimizers.items():
                 optimizer_dict = optimizer.state_dict()
+                if key == 'poses':
+                    continue
                 optimizer_dict.update(checkpoint['optimizers'][key])
                 optimizer.load_state_dict(optimizer_dict)
             discard_index = checkpoint['dataset_index'] if self.hparams.resume_ckpt_state else -1
@@ -275,10 +279,11 @@ class Runner:
         """
         schedulers = {}
         for key, optimizer in optimizers.items():
+            if key == 'poses':
+                continue
             schedulers[key] = ExponentialLR(optimizer,
                                             gamma=self.hparams.lr_decay_factor ** (1 / self.hparams.train_iterations),
                                             last_epoch=train_iterations - 1)
-        self.iter_step = -1
 
         """
         加载数据集
