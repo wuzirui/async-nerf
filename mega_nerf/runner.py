@@ -529,6 +529,7 @@ class Runner:
         depth_loss = F.l1_loss(render_depth_metric, depths_metric, reduction='mean')
         pose_mask = torch.logical_and(torch.logical_and(depths_metric > 1e-5, depths_metric < 85), render_depth_metric < 85)
         depth_pose_loss = F.l1_loss((render_depth_metric[pose_mask] + 1e-5).log(), (depths_metric[pose_mask] + 1e-5).log(), reduction='mean')
+        if not depth_pose_loss.isfinite(): depth_pose_loss = 0
         metrics['photo_loss'] = photo_loss
         metrics['depth_mse_loss'] = depth_loss
         metrics['depth_pose_loss'] = depth_pose_loss
