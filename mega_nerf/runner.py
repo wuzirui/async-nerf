@@ -494,8 +494,9 @@ class Runner:
             depth_variance_metrics = results[f'depth_variance_{typ}'] * (self.pose_scale_factor ** 2) + 1e-4
             if self.pose_correction is not None and self.hparams.have_gt_poses:
                 error_trans_axes = (c2ws.translation() - gt_c2ws.translation()).abs().cpu().numpy() * self.pose_scale_factor
-                error_trans = np.linalg.norm(error_trans_axes, axis=-1)
-                theta_rot = (torch.acos(torch.sum(c2ws.rotation().tensor() * gt_c2ws.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi).cpu().numpy()
+                mask = (depth_masks.cpu() == 1).reshape(-1)
+                error_trans = np.linalg.norm(error_trans_axes, axis=-1)[mask]
+                theta_rot = (torch.acos(torch.sum(c2ws.rotation().tensor() * gt_c2ws.rotation().tensor(), dim=-1).abs().clamp(-1, 1)) * 360 / math.pi)[mask].cpu().numpy()
                 error_trans_median = np.median(error_trans, axis=0)
                 error_trans_mean = np.mean(error_trans, axis=0)
                 theta_rot_median = np.median(theta_rot, axis=0)
@@ -525,11 +526,14 @@ class Runner:
             "train/δ_2": depth_delta(render_depth_metric, depths_metric, 2),
             "train/δ_3": depth_delta(render_depth_metric, depths_metric, 3),
         })
-        depth_loss = F.mse_loss(render_depth_metric, depths_metric, reduction='mean')
+        depth_loss = F.l1_loss(render_depth_metric, depths_metric, reduction='mean')
+        pose_mask = torch.logical_and(torch.logical_and(depths_metric > 1e-5, depths_metric < 85), render_depth_metric < 85)
+        depth_pose_loss = F.l1_loss((render_depth_metric[pose_mask] + 1e-5).log(), (depths_metric[pose_mask] + 1e-5).log(), reduction='mean')
         metrics['photo_loss'] = photo_loss
         metrics['depth_mse_loss'] = depth_loss
+        metrics['depth_pose_loss'] = depth_pose_loss
         depth_weight = self.hparams.depth_weight * self.progress if self.progress >= self.hparams.BARF_start else 0.
-        metrics['loss'] = depth_loss * depth_weight +  photo_loss
+        metrics['loss'] = depth_loss * depth_weight + depth_pose_loss * (self.hparams.depth_weight - depth_weight) +  photo_loss
         return metrics, bg_nerf_rays_present
 
     def _run_validation(self, train_index: int) -> Dict[str, float]:

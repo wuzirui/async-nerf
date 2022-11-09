@@ -1,17 +1,17 @@
-ray_altitude_range: [-5, 40]
-val_interval: 3000
+ray_altitude_range: [-5, 50]
+# val_interval: 3000
 ckpt_interval: 10000
 coarse_samples: 256
 fine_samples: 512
 batch_size: 256
 lr: 5e-4
-lr_pose: 1e-6
+lr_pose: 1e-1
 
 no_bg_nerf: True
-photo_weight: 1.0
-depth_weight: 1e-3
+photo_weight: 0.0
+depth_weight: 1
 sigma_zeroinit: True
 random_seed: 28
-BARF_start: 0.
+BARF_start: 0.0
 BARF: True
 have_gt_poses: True

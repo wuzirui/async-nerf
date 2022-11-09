@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import math
 
-n_feature = 300
+n_feature = 200
 def hashcode(num: torch.IntTensor) -> torch.IntTensor:
     # return num + 2
     return ((num ** 13).abs() + 1) % n_feature
