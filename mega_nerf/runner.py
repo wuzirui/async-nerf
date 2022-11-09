@@ -526,7 +526,7 @@ class Runner:
             "train/δ_2": depth_delta(render_depth_metric, depths_metric, 2),
             "train/δ_3": depth_delta(render_depth_metric, depths_metric, 3),
         })
-        depth_loss = F.l1_loss(render_depth_metric, depths_metric, reduction='mean')
+        depth_loss = F.mse_loss(render_depth_metric, depths_metric, reduction='mean')
         pose_mask = torch.logical_and(torch.logical_and(depths_metric > 1e-5, depths_metric < 85), render_depth_metric < 85)
         depth_pose_loss = F.l1_loss((render_depth_metric[pose_mask] + 1e-5).log(), (depths_metric[pose_mask] + 1e-5).log(), reduction='mean')
         if not depth_pose_loss.isfinite(): depth_pose_loss = 0
