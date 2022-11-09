@@ -6,7 +6,7 @@ fine_samples: 512
 batch_size: 256
 no_bg_nerf: True
 lr: 5e-4
-lr_pose: 1e-6
+lr_pose: 5e-7
 
 photo_weight: 1.0
 depth_weight: 1e-3
