@@ -9,6 +9,9 @@ photo_weight: 1.0
 depth_weight: 0
 sigma_zeroinit: False
 random_seed: 28
+pos_xyz_dim: 10
+pos_dir_dim: 4
+coarse_samples: 64
 BARF: False
 have_gt_poses: True
 

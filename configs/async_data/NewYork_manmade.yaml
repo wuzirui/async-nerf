@@ -6,12 +6,12 @@ fine_samples: 512
 batch_size: 256
 no_bg_nerf: True
 lr: 5e-4
-lr_pose: 1e-5
+lr_pose: 1e-6
 
 photo_weight: 1.0
 depth_weight: 1e-3
 sigma_zeroinit: True
 random_seed: 28
 BARF: True
-BARF_start: 0.1
+BARF_start: 0.05
 have_gt_poses: True

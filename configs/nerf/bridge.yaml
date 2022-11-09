@@ -7,6 +7,9 @@ lr: 5e-4
 photo_weight: 1.0
 depth_weight: 0
 sigma_zeroinit: False
+pos_xyz_dim: 10
+pos_dir_dim: 4
+coarse_samples: 64
 random_seed: 28
 BARF: False
 have_gt_poses: True
