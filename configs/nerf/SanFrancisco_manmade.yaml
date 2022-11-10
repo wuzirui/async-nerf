@@ -11,6 +11,7 @@ random_seed: 28
 pos_xyz_dim: 10
 pos_dir_dim: 4
 coarse_samples: 64
+fine_samples: 128
 BARF: False
 have_gt_poses: True
 

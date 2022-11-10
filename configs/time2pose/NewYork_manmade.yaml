@@ -5,10 +5,8 @@ n_val: 30
 val_interval: 200
 translation_weight: 2
 rotation_weight: 1e-3
-velocity_weight: 0
+velocity_weight: 1e-4
 use_manifold: True
 random_seed: 3407
 start_timestamp: 1664033688
 train_epochs: 100001
-test_datapath: ./raw_data/NewYork_manmade/depthvis_offset_random
-ckpt_path: exp/time2pose/manmade_path/4/ckpts/99000_network.pth

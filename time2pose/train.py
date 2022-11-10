@@ -93,7 +93,7 @@ class Runner:
         cum_metrics = {}
         for batch in self.train_dataset:
             timestamps = batch['timestamp'].reshape(-1, 1).to(self.device)
-            gt_velocity = batch['velocity'].reshape(-1, 7).to(self.device)
+            gt_velocity = batch['velocity'].reshape(-1, 7).mean(dim=-1).to(self.device)
 
             #inference through network
             predicted_trans, predicted_rot, v = self.network(timestamps, train=True)

@@ -60,9 +60,9 @@ class TimePoseFunction(nn.Module):
         trans = self.translation_output(x)
         se3 = torch.cat([trans, rot], dim=-1)
         if train and self.use_velocity:
-            v  = torch.cat([torch.autograd.grad(se3[:, i:i+1], t,
-                                     grad_outputs=torch.ones([len(t), 1]).to(t.device),
+            v  = torch.autograd.grad(se3, t,
+                                     grad_outputs=torch.ones([len(t), 7]).to(t.device),
                                      retain_graph=True,
-                                     create_graph=True)[0] for i in range(7)], dim=-1)
+                                     create_graph=True)[0]
         else: v = None
         return trans, rot, v
