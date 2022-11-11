@@ -1,4 +1,3 @@
-ray_altitude_range: [-5, 40]
 val_interval: 3000
 ckpt_interval: 10000
 coarse_samples: 256
