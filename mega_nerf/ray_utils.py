@@ -47,13 +47,13 @@ def _get_rays_inner(rays_o: torch.Tensor, rays_d: torch.Tensor, near: float, far
     near_bounds = near * torch.ones_like(rays_o[..., :1])
     far_bounds = far * torch.ones_like(rays_o[..., :1])
 
-    # if ray_altitude_range is not None:
-    #     _truncate_with_plane_intersection(rays_o, rays_d, ray_altitude_range[0], near_bounds)
-    #     near_bounds = torch.clamp(near_bounds, min=near)
-    #     _truncate_with_plane_intersection(rays_o, rays_d, ray_altitude_range[1], far_bounds)
+    if ray_altitude_range is not None:
+        _truncate_with_plane_intersection(rays_o, rays_d, ray_altitude_range[0], near_bounds)
+        near_bounds = torch.clamp(near_bounds, min=near)
+        _truncate_with_plane_intersection(rays_o, rays_d, ray_altitude_range[1], far_bounds)
 
-    #     far_bounds = torch.clamp(far_bounds, max=far)
-    #     far_bounds = torch.maximum(near_bounds, far_bounds)
+        far_bounds = torch.clamp(far_bounds, max=far)
+        far_bounds = torch.maximum(near_bounds, far_bounds)
 
     return torch.cat([rays_o,
                       rays_d,
