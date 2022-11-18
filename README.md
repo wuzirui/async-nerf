@@ -13,7 +13,6 @@ The codebase has been mainly tested against CUDA >= 11.3 and V100/3090 GPUs.
 
 ### Custom Data
 
-
 If creating a custom dataset manually, the expected directory structure is:
 - /coordinates.pt: [Torch file](https://pytorch.org/docs/stable/generated/torch.save.html) that should contain the following keys:
   - 'origin_drb': Origin of scene in real-world units
@@ -40,11 +39,6 @@ Single-GPU evaluation: ```python mega_nerf/eval.py --config_file configs/nerf/${
 
 Multi-GPU evaluation: ```python -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node $NUM_GPUS mega_nerf/eval.py --config_file configs/nerf/${DATASET_NAME}.yaml  --exp_name $EXP_NAME --dataset_path $DATASET_PATH --container_path $MERGED_OUTPUT```
 
-## Octree Extraction (for use by Mega-NeRF-Dynamic viewer)
-
-```
-python scripts/create_octree.py --config configs/mega-nerf/${DATASET_NAME}.yaml --dataset_path $DATASET_PATH --container_path $MERGED_OUTPUT --output $OCTREE_PATH
- ```
 
 ## Acknowledgements
 
