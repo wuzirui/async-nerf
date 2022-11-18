@@ -1,27 +1,6 @@
-# Mega-NeRF
+# Async-NeRF
 
-This repository contains the code needed to train [Mega-NeRF](https://meganerf.cmusatyalab.org/) models and generate the sparse voxel octrees used by the Mega-NeRF-Dynamic viewer.
-
-The codebase for the Mega-NeRF-Dynamic viewer can be found [here](https://github.com/cmusatyalab/mega-nerf-viewer).
-
-**Note:** This is a preliminary release and there may still be outstanding bugs.
-
-## Citation
-
-```
-@InProceedings{Turki_2022_CVPR,
-    author    = {Turki, Haithem and Ramanan, Deva and Satyanarayanan, Mahadev},
-    title     = {Mega-NERF: Scalable Construction of Large-Scale NeRFs for Virtual Fly-Throughs},
-    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-    month     = {June},
-    year      = {2022},
-    pages     = {12922-12931}
-}
-```
-
-## Demo
-![](demo/rubble-orbit.gif)
-![](demo/building-orbit.gif)
+This repository contains the code needed to train 
 
 ## Setup
 
@@ -30,51 +9,10 @@ conda env create -f environment.yml
 conda activate mega-nerf
 ```
 
-The codebase has been mainly tested against CUDA >= 11.1 and V100/2080 Ti/3090 Ti GPUs. 1080 Ti GPUs should work as well although training will be much slower.
-
-## Pretrained Models
-
-### Trained with 8 submodules (to compare with main paper)
-
-- Rubble: [model](https://storage.cmusatyalab.org/mega-nerf-data/rubble-pixsfm-8.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/rubble-pixsfm-grid-8.tgz)
-- Building: [model](https://storage.cmusatyalab.org/mega-nerf-data/building-pixsfm-8.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/building-pixsfm-grid-8.tgz)
-- Quad: [model](https://storage.cmusatyalab.org/mega-nerf-data/quad-pixsfm-8.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/quad-pixsfm-grid-8.tgz)
-- Residence: [model](https://storage.cmusatyalab.org/mega-nerf-data/residence-pixsfm-8.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/residence-pixsfm-grid-8.tgz)
-- Sci-Art: [model](https://storage.cmusatyalab.org/mega-nerf-data/sci-art-pixsfm-8.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/sci-art-pixsfm-grid-8.tgz)
-- Campus: [model](https://storage.cmusatyalab.org/mega-nerf-data/campus-pixsfm-8.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/campus-pixsfm-grid-8.tgz)
-
-### Larger models (trained with 25 submodules with 512 channels each)
-
-- Rubble: [model](https://storage.cmusatyalab.org/mega-nerf-data/rubble-pixsfm-25-w-512.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/rubble-pixsfm-grid-25.tgz)
-- Building: [model](https://storage.cmusatyalab.org/mega-nerf-data/building-pixsfm-25-w-512.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/building-pixsfm-grid-25.tgz)
-- Residence: [model](https://storage.cmusatyalab.org/mega-nerf-data/residence-pixsfm-25-w-512.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/residence-pixsfm-grid-25.tgz)
-- Sci-Art: [model](https://storage.cmusatyalab.org/mega-nerf-data/sci-art-pixsfm-25-w-512.pt) [cluster masks](https://storage.cmusatyalab.org/mega-nerf-data/sci-art-pixsfm-grid-25.tgz)
-
-## Data
-
-### Mill 19
-
-- The Building scene can be downloaded [here](https://storage.cmusatyalab.org/mega-nerf-data/building-pixsfm.tgz).
-- The Rubble scene can be downloaded [here](https://storage.cmusatyalab.org/mega-nerf-data/rubble-pixsfm.tgz).
-
-### UrbanScene 3D
-
-1. Download the raw photo collections from the [UrbanScene3D](https://vcc.tech/UrbanScene3D/) dataset
-2. Download the refined camera poses for one of the scenes below:
-  - [Residence](https://storage.cmusatyalab.org/mega-nerf-data/residence-pixsfm.tgz)
-  - [Sci-Art](https://storage.cmusatyalab.org/mega-nerf-data/sci-art-pixsfm.tgz)
-  - [Campus](https://storage.cmusatyalab.org/mega-nerf-data/campus-pixsfm.tgz)
-4. Run ```python scripts/copy_images.py --image_path $RAW_PHOTO_PATH --dataset_path $CAMERA_POSE_PATH```
-
-### Quad 6k Dataset
-
-1. Download the raw photo collections from [here](http://vision.soic.indiana.edu/disco_files/ArtsQuad_dataset.tar).
-2. Download [the refined camera poses](https://storage.cmusatyalab.org/mega-nerf-data/quad-pixsfm.tgz)
-3. Run ```python scripts/copy_images.py --image_path $RAW_PHOTO_PATH --dataset_path $CAMERA_POSE_PATH```
+The codebase has been mainly tested against CUDA >= 11.3 and V100/3090 GPUs. 
 
 ### Custom Data
 
-We strongly recommend using [PixSFM](https://github.com/cvg/pixel-perfect-sfm) to refine camera poses for your own datasets. Mega-NeRF also assumes that the dataset is properly geo-referenced/aligned such that the second value of its `ray_altitude_range` parameter properly corresponds to ground level. If using PixSFM/COLMAP the [model_aligner](https://colmap.github.io/faq.html#geo-registration) utility might be helpful, with [Manhattan world alignment](https://colmap.github.io/faq.html#manhattan-world-alignment) being a possible fallback option if GPS alignment is not possible. We provide a [script](https://github.com/cmusatyalab/mega-nerf/blob/main/scripts/colmap_to_mega_nerf.py) to convert from PixSFM/COLMAP output to the format Mega-NeRF expects.
 
 If creating a custom dataset manually, the expected directory structure is:
 - /coordinates.pt: [Torch file](https://pytorch.org/docs/stable/generated/torch.save.html) that should contain the following keys:
@@ -110,4 +48,4 @@ python scripts/create_octree.py --config configs/mega-nerf/${DATASET_NAME}.yaml 
 
 ## Acknowledgements
 
-Large parts of this codebase are based on existing work in the [nerf_pl](https://github.com/kwea123/nerf_pl), [NeRF++](https://github.com/Kai-46/nerfplusplus), and [Plenoctree](https://github.com/sxyu/plenoctree) repositories. We use [svox](https://github.com/sxyu/svox) to serialize our sparse voxel octrees and the generated structures should be largely compatible with that codebase.
+Large parts of this codebase are based on existing work in the [Mega-NeRF](https://github.com/cmusatyalab/mega-nerf).
