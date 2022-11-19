@@ -93,7 +93,6 @@ elif hparams.pose_storage_format == 'frame':
         for i, name in enumerate(names):
             pose_path = pose_dir / f'{name.stem}.txt'
             if not pose_path.exists():  # mis-aligned data input, select the nearest frame
-                assert 'depth' in pose_dir.name, 'aligned rgb poses are required'
                 l = np.array([abs(float(pose_file.stem) - float(name.stem)) for pose_file in pose_files])
                 pose_path = pose_files[np.argmin(l)]
                 print(f'{name.stem} estimates to {pose_path.stem}')

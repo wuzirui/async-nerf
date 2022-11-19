@@ -69,10 +69,12 @@ class PoseCorrection(nn.Module):
     
     def __init__(self, n_frames):
         super(PoseCorrection,self).__init__()
+        self.n_frames = n_frames
         self.rot_dict = nn.Parameter(pp.identity_so3(n_frames).tensor())
         self.trans_dict = nn.Parameter(torch.zeros([n_frames, 3]))
     
     def forward(self, image_indices, rays, depth_mask):
+        image_indices[image_indices >= self.n_frames] = 0
         rot = torch.where(depth_mask == 1, self.rot_dict[image_indices.long()], pp.identity_so3(len(rays)).to(rays.device).tensor())
         trans = torch.where(depth_mask == 1, self.trans_dict[image_indices.long()], torch.zeros([len(rays), 3]).to(rays.device))
         rot = pp.Exp(pp.so3(rot))
@@ -83,6 +85,7 @@ class PoseCorrection(nn.Module):
         return ret
     
     def forward_c2ws(self, image_indices, c2ws, depth_mask):
+        image_indices[image_indices >= self.n_frames] = 0
         correction = torch.where(depth_mask == 1, self.rot_dict[image_indices.long()], pp.identity_so3(len(c2ws)).to(c2ws.device))
         trans = torch.where(depth_mask == 1, self.trans_dict[image_indices.long()], torch.zeros([len(c2ws), 3]).to(c2ws.device))
         correction = pp.Exp(pp.so3(correction))

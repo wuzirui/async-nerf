@@ -1,7 +1,11 @@
-n_layers: 7
-pose_scale_factor: 1
+n_layers: 3
+n_channels: 256
+# pose_scale_factor: 1
 n_val: 10
-val_interval: 200
-velocity_weight: 0.
+val_interval: 100
+rotation_weight: 1
+lr: 1e-4
+translation_weight: 1
+velocity_weight: 0 #1e-2
 use_manifold: False
-start_timestamp: 1663842630
+start_timestamp: 1664033688

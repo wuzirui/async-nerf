@@ -34,4 +34,9 @@ def get_opts_base():
 
     parser.add_argument('--use_manifold', default=False, action='store_true', help='use manifold optimization on rotation learning')
     parser.add_argument('--manifold_lambda', default=0.01, type=float, help='lambda value, please refer to the original paper')
+
+    parser.add_argument('--feature_type', choices=[None, 'hash', 'grid'], help='type of network: None ~ MLP, hash ~ multiresolution hash grid, grid ~ single layer feature grid')
+    parser.add_argument('--n_grid_features', type=int, nargs='+', default=[200], help='num of per-layer features')
+    parser.add_argument('--feature_dim', type=int, default=100, help='feature dim')
+    parser.add_argument('--hash_parameters', type=int, nargs='*', default=[1, 2654435761])
     return parser

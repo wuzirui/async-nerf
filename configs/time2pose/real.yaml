@@ -1,0 +1,13 @@
+n_layers: 5
+n_channels: 1024
+# pose_scale_factor: 1
+n_val: 10
+val_interval: 100
+rotation_weight: 1
+lr: 1e-4
+translation_weight: 1
+velocity_weight: 1
+use_manifold: False
+start_timestamp: 1668442555
+feature_type: 'grid'
+n_grid_features: [700, 700]

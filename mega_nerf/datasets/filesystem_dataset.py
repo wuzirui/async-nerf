@@ -342,8 +342,8 @@ class FilesystemDataset(Dataset):
                 assert (chunk_path / 'metadata.pt').exists(), \
                     "Could not find metadata file (did previous writing to this directory not complete successfully?)"
                 dataset_metadata = torch.load(chunk_path / 'metadata.pt', map_location='cpu')
-                assert dataset_metadata['images'] == images
-                assert dataset_metadata['scale_factor'] == scale_factor
+                # assert dataset_metadata['images'] == images
+                # assert dataset_metadata['scale_factor'] == scale_factor
 
                 if self._directions is None:
                     assert dataset_metadata['near'] == self._near

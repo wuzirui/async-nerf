@@ -526,7 +526,7 @@ class Runner:
             "train/δ_2": depth_delta(render_depth_metric, depths_metric, 2),
             "train/δ_3": depth_delta(render_depth_metric, depths_metric, 3),
         })
-        depth_loss = F.mse_loss(render_depth_metric, depths_metric, reduction='mean')
+        depth_loss = F.mse_loss(render_depth_metric[depths_metric>1e-5], depths_metric[depths_metric>1e-5], reduction='mean')
         pose_mask = torch.logical_and(torch.logical_and(depths_metric > 1e-5, depths_metric < 85), render_depth_metric < 85)
         depth_pose_loss = F.l1_loss((render_depth_metric[pose_mask] + 1e-5).log(), (depths_metric[pose_mask] + 1e-5).log(), reduction='mean')
         if not depth_pose_loss.isfinite(): depth_pose_loss = 0
@@ -621,6 +621,8 @@ class Runner:
                         self.writer.add_histogram('val/weights_dist', torch.log(results['weights_fine']), global_step=self.iter_step)
                         depths_metric, render_depth_metric = viz_image * self.pose_scale_factor, results[f'depth_{typ}'].view(-1) * self.pose_scale_factor
                         depths_metric = depths_metric.view(-1)
+                        render_depth_metric = render_depth_metric[depths_metric > 1e-5]
+                        depths_metric = depths_metric[depths_metric > 1e-5]
                         depth_metrics = {
                             "val_depth/RMSE/{}".format(i): depth_rmse(render_depth_metric, depths_metric),
                             "val_depth/RMSE_log/{}".format(i): depth_rmse_log(render_depth_metric, depths_metric),
@@ -685,9 +687,6 @@ class Runner:
 
 
                 dist.barrier()
-            for key in val_metrics:
-                avg_val = val_metrics[key] / len(self.val_items)
-                self.writer.add_scalar('{}/avg'.format(key), avg_val, 0)
 
             self.nerf.train()
         finally:
@@ -927,8 +926,8 @@ class Runner:
         """
         metadata = torch.load(metadata_path, map_location='cpu')
         intrinsics = metadata['intrinsics'] / scale_factor
-        assert metadata['W'] % scale_factor == 0
-        assert metadata['H'] % scale_factor == 0
+        # assert metadata['W'] % scale_factor == 0
+        # assert metadata['H'] % scale_factor == 0
         try:
             pp.mat2SE3(metadata['c2w'])
         except all:

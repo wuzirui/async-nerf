@@ -2,23 +2,22 @@ import torch
 from torch import nn
 import math
 
-n_feature_0, n_feature_1 = 100, 50
-def hashcode(num: torch.LongTensor) -> torch.LongTensor:
-    # return num + 2
-    # return ((num ** 13).abs() + 1) % n_feature
-    return (num.long() ^ 2654435761 + 1) % n_feature_0, (num.long() ^ 1) % n_feature_1
+
 
 class TimePoseFunction(nn.Module):
     def __init__(self, hparams):
         super(TimePoseFunction, self).__init__()
         nets = []
         self.use_velocity = hparams.velocity_weight > 0
+        self.hparams = hparams
         n_channels = hparams.n_channels
         self.skip = hparams.skip_connections
-        feature_dim = 40
+        feature_dim = 2
+        if hparams.feature_type in ['grid', 'hash']:
+            self.feature_dict = [nn.Parameter(torch.randn(n_feat, hparams.feature_dim)) for n_feat in hparams.n_grid_features]
+            feature_dim = len(hparams.n_grid_features * hparams.feature_dim)
+            
         self.input_dir = feature_dim + 1
-        self.feature_dict_0 = nn.Parameter(torch.randn(n_feature_0, feature_dim // 2))
-        self.feature_dict_1 = nn.Parameter(torch.randn(n_feature_1, feature_dim // 2))
         for i in range(hparams.n_layers):
             if i == 0:
                 layer = nn.Linear(self.input_dir, n_channels)
@@ -38,24 +37,39 @@ class TimePoseFunction(nn.Module):
         self.rotation_output = nn.Sequential(nn.Linear(n_channels, 4))
         self.translation_output = nn.Sequential(nn.Linear(n_channels, 3))
 
+    def hashcode(self, num: torch.LongTensor) -> torch.LongTensor:
+        if self.hparams.feature_type is None:
+            return None
+        elif self.hparams.feature_type == 'grid':
+            assert num.max() + 1 < self.hparams.n_grid_features[0], "index out of range"
+            return num + 1
+        elif self.hparams.feature_type == 'hash':
+            ret = [((num ^ x) * 10) % mod for x, mod in zip(self.hparams.hash_parameters, self.hparams.n_grid_features)]
+            return ret
+        else:
+            raise "feature type not found"
+
     def _interpolate(self, t):
         t_mid = t.floor().long()
-        id_prev_0, id_prev_1 = hashcode(t_mid - 1)
-        id_mid_0, id_mid_1 = hashcode(t_mid)
-        id_next_0, id_next_1 = hashcode(t_mid + 1)
-        feat_prev_0, feat_prev_1 = self.feature_dict_0[id_prev_0].squeeze(1), self.feature_dict_1[id_prev_1].squeeze(1)
-        feat_mid_0, feat_mid_1 = self.feature_dict_0[id_mid_0].squeeze(1), self.feature_dict_1[id_mid_1].squeeze(1)
-        feat_next_0, feat_next_1 = self.feature_dict_0[id_next_0].squeeze(1), self.feature_dict_1[id_next_1].squeeze(1)
+        id_prev = self.hashcode(t_mid - 1)
+        id_mid = self.hashcode(t_mid)
+        id_next = self.hashcode(t_mid + 1)
+        feat_prev = [feat_dict[idx].squeeze(1).to(t.device) for feat_dict, idx in zip(self.feature_dict, id_prev)]
+        feat_mid = [feat_dict[idx].squeeze(1).to(t.device) for feat_dict, idx in zip(self.feature_dict, id_mid)]
+        feat_next = [feat_dict[idx].squeeze(1).to(t.device) for feat_dict, idx in zip(self.feature_dict, id_next)]
         l_prev = (t - t_mid) * (t - t_mid - 1) / 2
         l_mid = -(t - t_mid + 1) * (t - t_mid -1)
         l_next = (t - t_mid + 1) * (t - t_mid) / 2
-        ret = torch.cat([l_prev * feat_prev_0 + l_mid * feat_mid_0 + l_next * feat_next_0, l_prev * feat_prev_1 + l_mid * feat_mid_1 + l_next * feat_next_1], dim=-1)
+        ret = torch.cat([l_prev * previ + l_mid * midi + l_next * nexti for previ, midi, nexti in zip(feat_prev, feat_mid, feat_next)], dim=-1)
         return ret
         
     def forward(self, t, train=False):
         if train and self.use_velocity:
             t = t.requires_grad_(True)
-        feat = self._interpolate(t)
+        if self.hparams.feature_type is None:
+            feat = torch.cat([torch.zeros_like(t), torch.ones_like(t)], dim=-1)
+        else:
+            feat = self._interpolate(t)
         x = torch.cat([t, feat], -1)
         for i, net in enumerate(self.nets):
             if i in self.skip:
