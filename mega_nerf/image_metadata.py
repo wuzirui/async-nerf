@@ -59,9 +59,9 @@ class ImageMetadata:
     
     def _load_depth_image(self) -> torch.Tensor:
         """
-        从文件系统中读取深度图片 (PFM), 并按照 metadata 进行缩放
+        read depth image from filesystem
         Returns:
-        - torch.Tensor: 深度图片的缩放后的 tensor (self.W, self.H, 1)
+        - torch.Tensor: tensor (self.W, self.H, 1)
         """
         depths = Image.open(self.image_path).convert("L")
         depths = np.asarray(depths, dtype=np.float32)
@@ -76,10 +76,9 @@ class ImageMetadata:
 
     def load_mask(self) -> Optional[torch.Tensor]:
         """
-        加载数据集 mask, 若没有指定 mask, 返回 None
+        load masks
         Returns:
         - (Optional) torch.Tensor: mask tensor (self.W, self.H)
-            在当前数据集中的像素 mask 值为 True, 否则为 False
         """
         if self._mask_path is None:
             return None

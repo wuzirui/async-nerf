@@ -59,25 +59,17 @@ def render_rays(nerf: nn.Module,
                 progress: float,
                 ) -> Tuple[Dict[str, torch.Tensor], bool]:
     """
-    根据输入的 rays, 返回对应的渲染结果
     Inputs:
-    - nerf: 前景渲染模型
-        - training: 是否在训练阶段
-        - cluster_dim_start: 
-    - bg_nerf: 背景渲染模型 (可选, 根据 hparams.bg_nerf 来决定是否使用)
+    - nerf: NeRF model
+    - bg_nerf: background NeRF model
     - rays: (N_rays, 8)
-        - rays[:, :3]: 光线的起点
-        - rays[:, 3:6]: 光线的方向
-        - rays[:, 6:7]: near, 积分起点
-        - rays[:, 7:8]: far, 积分终点
+        - rays[:, :3]:  rays_o
+        - rays[:, 3:6]: rays_d
+        - rays[:, 6:7]: near
+        - rays[:, 7:8]: far
     - image_indices: (N_rays,)
-    - hparams: 参数
-        - perturb: float, 对 z_vals 进行随机扰动的大小范围
-    - sphere_center: (3,), 椭球的中心 (x0, y0, z0), 当使用 NeRF++ 时, 该参数为 None, 此时使用单位球
-    - sphere_radius: (3,), 椭球的三个轴长 (a, b, c), 当使用 NeRF++ 时, 该参数为 None, 此时使用单位球
-    - get_depth: 是否获取深度图
-    - get_depth_variance: 是否获取深度图的方差
-    - get_bg_fg_rgb: 是否获取前景背景渲染图片
+    - sphere_center: (3,)
+    - sphere_radius: (3,)
     """
     N_rays = rays.shape[0]
 
@@ -90,9 +82,8 @@ def render_rays(nerf: nn.Module,
     last_delta = 1e10 * torch.ones(N_rays, 1, device=rays.device)
     if bg_nerf is not None:
         """
-        使用前后景渲染模型
-        - 首先计算射线与单位球/椭球的交点处的 z_val 作为前景模型的新的 far 值
-        - 获得背景模型的需要的射线
+        use fore/background rendering
+        - calculate the intersection between the ray and the sphere
         """
         fg_far = _intersect_sphere(rays_o, rays_d, sphere_center, sphere_radius)
 
@@ -477,19 +468,17 @@ def _inference(results: Dict[str, torch.Tensor],
 def _intersect_sphere(rays_o: torch.Tensor, rays_d: torch.Tensor, sphere_center: torch.Tensor,
                       sphere_radius: torch.Tensor) -> torch.Tensor:
     """
-    计算光线与球的交点处的z值
-    推导过程见: https://www.wolai.com/wuzirui/ccsW8Q5o7gKrf2rE61oKFN#x66MJ6Um36LZA5zABs4doZ
     Inputs:
-    - rays_o: (..., 3), 光线起点
-    - rays_d: (..., 3), 光线方向
-    - sphere_center: (3) or None, 椭球的中心 (x0, y0, z0), 当使用 NeRF++ 时, 该参数为 None, 此时使用单位球
-    - sphere_radius: (3) or None, 椭球的三个轴长 (a, b, c), 当使用 NeRF++ 时, 该参数为 None, 此时使用单位球
+    - rays_o: (..., 3), starting point of ray
+    - rays_d: (..., 3), ray direction
+    - sphere_center: (3) or None, center position of the sphere (x0, y0, z0), None for NeRF++/NeRF settings
+    - sphere_radius: (3) or None, length of sphere axes, None for NeRF++/NeRF settings
     Returns:
-    - z_vals: (..., 1) 光线与球的交点处的z值
+    - z_vals: (..., 1) zvals at the intersection
     """
     if sphere_radius is not None:
         """
-        使用椭球, 将射线归一化到单位球里面, 然后再按照单位球进行求解
+        normalize the shpere radius into unit sphere
         """
         rays_o = (rays_o - sphere_center) / sphere_radius
         rays_d = rays_d / sphere_radius
@@ -504,9 +493,6 @@ def _intersect_sphere(rays_o: torch.Tensor, rays_d: torch.Tensor, sphere_center:
     # consider the case where the ray does not intersect the sphere
     ray_d_cos = 1. / torch.norm(rays_d, dim=-1)
     p_norm_sq = torch.sum(p * p, dim=-1)
-    """
-    当原点到两个交点的中点的向量长度>1时, 说明相机不在球体内, 不过这种方法是否多少有些奇怪?
-    """
     if (p_norm_sq >= 1.).any():
         raise Exception(
             'Not all your cameras are bounded by the unit sphere; please make sure the cameras are normalized properly!')
@@ -569,12 +555,12 @@ def _depth2pts_outside(rays_o: torch.Tensor, rays_d: torch.Tensor, depth: torch.
 
 def _expand_and_perturb_z_vals(z_vals, samples, perturb, N_rays):
     """
-    将 z_vals 扩展到 N_rays 个样本, 并且对每个样本进行随机噪声
+    Extend z_vals to N_rays of samples, and apply random noise to each sample
     Inputs:
-    - z_vals: (..., 1), 归一化空间中采样的深度
-    - samples: int, 光线上采样的个数
-    - perturb: float, 随机扰动的范围
-    - N_rays: int, 光线数量
+    - z_vals: (..., 1), depth values in the normalized space
+    - samples: int, num of sampling point
+    - perturb: float, perturbation interval
+    - N_rays: int, num of rays in batch
     Return:
     - z_vals_expanded: (..., samples, 1)
     """

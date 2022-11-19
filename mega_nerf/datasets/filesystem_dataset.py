@@ -147,27 +147,16 @@ class FilesystemDataset(Dataset):
     def _write_chunks(self, metadata_items: List[ImageMetadata], center_pixels: bool, device: torch.device,
                       chunk_paths: List[Path], num_chunks: int, scale_factor: int, disk_flush_size: int) -> None:
         """
-        创建 chunk_dir 目录下的所有 chunk 文件
+        create chunk files
         Inputs:
-        - metadata_items: 图像的元数据 [ImageMegadata]
-        - center_pixels: 是否将像素坐标转换为中心像素坐标
-        - device: 图像所在的设备 cpu/cuda
-        - chunk_paths: 每个 chunk 的路径, 这些目录不能被提前创建, 否则会报错
-        - num_chunks: chunk 数量
-        - scale_factor: 图像缩放的倍数
-        - disk_flush_size: 写入磁盘的最大块大小
+        - metadata_items: [ImageMegadata]
+        - chunk_paths: the chunk dir, mention that the directories are created automaticlly and can not be created manually
         """
-        # 主设备才需要执行这一部分
         assert ('RANK' not in os.environ) or int(os.environ['LOCAL_RANK']) == 0
 
         path_frees = []
         total_free = 0
 
-        """
-        创建各个 chunk 目录, 并检查所有目录中可用的 free 空间大小
-        - total_free 为所有目录中可用空间大小
-        - path_frees 为每个目录的可用空间大小
-        """
         for chunk_path in chunk_paths:
             chunk_path.mkdir(parents=True)
 
@@ -179,9 +168,6 @@ class FilesystemDataset(Dataset):
 
         index = 0
 
-        """
-        根据图片数量选择合适的数据类型 (int16/int32)
-        """
         max_rgb_index = max(metadata_items, key=lambda x: x.image_index if not x.is_depth else 0).image_index
         max_depth_index = max(metadata_items, key=lambda x: x.image_index if x.is_depth else 0).image_index
         max_index = max_rgb_index + max_depth_index
@@ -194,20 +180,9 @@ class FilesystemDataset(Dataset):
         main_print('Max image index is {}: using dtype: {}'.format(max_index, img_indices_dtype))
 
         for chunk_path, path_free in zip(chunk_paths, path_frees):
-            """
-            将 chunks 平均分配给每个 chunk_dir
-            """
             allocated = int(path_free / total_free * num_chunks)
             main_print('Allocating {} chunks to dataset path {}'.format(allocated, chunk_path))
             for j in range(allocated):
-                """
-                声明 parquet 文件 (列式存储)
-                - img_indices: 图像的索引
-                - rgbs_0 ~ rgbs_2: 图像的 RGB 值
-                - depths: 图像的深度
-                - pixel_indices: 像素的索引
-                - rays_0 ~ rays_7: 像素的光线信息 (xyz (3), dir (3), near, far)
-                """
                 parquet_path = chunk_path / '{0:06d}.parquet'.format(index)
                 self._parquet_paths.append(parquet_path)
 
@@ -261,9 +236,6 @@ class FilesystemDataset(Dataset):
                 indices.append(img_indices)
                 in_memory_count += len(image)
 
-                """
-                计算该 metadata 下的光线
-                """
                 if self._directions is not None:
                     image_pixel_indices = all_pixel_indices
                     if image_keep_mask is not None:
@@ -331,9 +303,6 @@ class FilesystemDataset(Dataset):
 
     def _check_existing_paths(self, chunk_paths: List[Path], center_pixels: bool, scale_factor: int, images: int) -> \
             Optional[List[Path]]:
-        """
-        检查文件系统数据集的格式是否正确
-        """
         parquet_files = []
 
         num_exist = 0
