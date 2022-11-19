@@ -8,14 +8,14 @@ from mega_nerf.image_metadata import ImageMetadata
 def get_rgbd_index_mask(metadata: ImageMetadata) -> Optional[
     Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
     """
-    读取 rgb, depth, index, mask, 这里对验证集 mask 作了一个奇怪的操作 TODO
+    read rgb, depth, index, mask
     Inputs:
-    - metadata: 图片的元信息 (ImageMetadata)
+    - metadata: image metadata (ImageMetadata)
     Returns:
-    - rgbs: RGB 图片中全部的像素 (torch.Tensor) shape: (n_mask, 3), n_mask 为 mask 中指定的像素数量
-    - depths: 深度图片中全部的像素 (torch.Tensor) shape: (n_mask, 1)
-    - indices: 图片的索引 (torch.Tensor) shape: (n_mask, 1)
-    - masks: 图片的 mask (torch.Tensor) shape: (self.W * self.H, 1)
+    - rgbs: (torch.Tensor) shape: (n_mask, 3)
+    - depths: (torch.Tensor) shape: (n_mask, 1)
+    - indices: (torch.Tensor) shape: (n_mask, 1)
+    - masks: pixel-wised mask for training (torch.Tensor) shape: (self.W * self.H, 1)
     """
     if metadata.is_depth:
         image = metadata.load_image().view(-1, 1)
@@ -28,9 +28,6 @@ def get_rgbd_index_mask(metadata: ImageMetadata) -> Optional[
         if keep_mask is None:
             keep_mask = torch.ones(metadata.H, metadata.W, dtype=torch.bool)
         else:
-            """
-            不知道这里为什么要这么干... TODO
-            """
             # Get how many pixels we're discarding that would otherwise be added
             discard_half = keep_mask[:, metadata.W // 2:]  # mask 的右半边
             discard_pos_count = discard_half[discard_half == True].shape[0]  # 右半边的数据集中的像素数
