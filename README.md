@@ -37,7 +37,7 @@ If creating a custom dataset manually, the expected directory structure is:
 ## Training
 
 ### Time-Pose Function
-``
+```
 python ./time2pose/train.py --datapath $DATAPATH --exp_name $EXP_NAME --config_file $CONFIG --test_datapath $DEPTH_POSE
 ```
 
